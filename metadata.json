@@ -1,0 +1,6 @@
+{
+  "name": "ContextBridge - AI Context Portability Chrome Extension",
+  "description": "Chrome extension for transferring structured project context seamlessly between ChatGPT, Claude, Gemini, and Cursor.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

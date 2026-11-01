@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ContextBridge</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Bar -->
+    <header class="header">
+      <div class="brand">
+        <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 11a9 9 0 0 1 9 9"></path>
+          <path d="M4 4a16 16 0 0 1 16 16"></path>
+          <circle cx="5" cy="19" r="1"></circle>
+        </svg>
+        <span class="brand-title">ContextBridge</span>
+      </div>
+      <div class="header-actions">
+        <button id="btnNewProject" class="btn-ghost" title="Create New Blank Context">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+          New
+        </button>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button id="tabEditor" class="tab-btn active">
+        Editor
+      </button>
+      <button id="tabHistory" class="tab-btn">
+        Saved Contexts <span id="historyCount" class="tab-badge">0</span>
+      </button>
+    </nav>
+
+    <!-- TAB 1: EDITOR VIEW -->
+    <main id="viewEditor" class="view-panel active">
+      <!-- Quick Fill Templates -->
+      <div class="template-bar">
+        <span class="template-label">Presets:</span>
+        <button type="button" class="template-chip" data-template="feature">Feature</button>
+        <button type="button" class="template-chip" data-template="bugfix">Bug Fix</button>
+        <button type="button" class="template-chip" data-template="refactor">Refactor</button>
+        <button type="button" class="template-chip" id="btnClearForm">Clear</button>
+      </div>
+
+      <form id="contextForm" class="context-form">
+        <!-- 1. Project Name -->
+        <div class="form-group">
+          <label for="projectName">Project / Chat Name</label>
+          <input 
+            type="text" 
+            id="projectName" 
+            name="projectName" 
+            placeholder="e.g. Next.js Auth Overhaul" 
+            required 
+            autocomplete="off"
+          />
+        </div>
+
+        <!-- 2. Current Task -->
+        <div class="form-group">
+          <label for="currentTask">Current Task</label>
+          <textarea 
+            id="currentTask" 
+            name="currentTask" 
+            rows="2" 
+            placeholder="What are you currently trying to solve or build?"
+            required
+          ></textarea>
+        </div>
+
+        <!-- 3. Important Context -->
+        <div class="form-group">
+          <label for="importantContext">Important Context</label>
+          <textarea 
+            id="importantContext" 
+            name="importantContext" 
+            rows="3" 
+            placeholder="Tech stack, constraints, architectural rules, or key variables..."
+          ></textarea>
+        </div>
+
+        <!-- 4. Work Completed -->
+        <div class="form-group">
+          <label for="workCompleted">Work Completed</label>
+          <textarea 
+            id="workCompleted" 
+            name="workCompleted" 
+            rows="3" 
+            placeholder="What has already been created, tested, or ruled out?"
+          ></textarea>
+        </div>
+
+        <!-- 5. Next Steps -->
+        <div class="form-group">
+          <label for="nextSteps">Next Steps</label>
+          <textarea 
+            id="nextSteps" 
+            name="nextSteps" 
+            rows="2" 
+            placeholder="Exact bullet points for what the next AI assistant should do..."
+          ></textarea>
+        </div>
+
+        <!-- Action Row -->
+        <div class="form-actions">
+          <button type="button" id="btnSave" class="btn btn-secondary">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+              <polyline points="17 21 17 13 7 13 7 21"></polyline>
+              <polyline points="7 3 7 8 15 8"></polyline>
+            </svg>
+            Save Locally
+          </button>
+          <button type="submit" id="btnGenerate" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="16 18 22 12 16 6"></polyline>
+              <polyline points="8 6 2 12 8 18"></polyline>
+            </svg>
+            Generate Package
+          </button>
+        </div>
+      </form>
+
+      <!-- Output Package Preview -->
+      <section id="outputSection" class="output-section hidden">
+        <div class="output-header">
+          <div class="output-meta">
+            <span class="output-title">Generated Context Package</span>
+            <span id="outputStats" class="output-stats">0 words · 0 chars</span>
+          </div>
+          <div class="output-controls">
+            <select id="formatSelector" class="format-select" title="Output Format">
+              <option value="standard">Standard AI Prompt</option>
+              <option value="markdown">Clean Markdown</option>
+              <option value="xml">XML Tags (Claude/Gemini)</option>
+              <option value="compact">Compact / Minimal</option>
+            </select>
+          </div>
+        </div>
+
+        <pre id="outputPreview" class="output-box"></pre>
+
+        <div class="output-actions">
+          <button type="button" id="btnCopyPackage" class="btn btn-copy">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span id="btnCopyText">Copy Package</span>
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <!-- TAB 2: SAVED CONTEXTS VIEW -->
+    <section id="viewHistory" class="view-panel">
+      <div class="history-search-bar">
+        <input 
+          type="search" 
+          id="historySearch" 
+          placeholder="Filter saved projects..." 
+          autocomplete="off"
+        />
+      </div>
+
+      <div id="savedListContainer" class="saved-list">
+        <!-- Rendered dynamically by popup.js -->
+      </div>
+    </section>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast hidden">Copied to clipboard!</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

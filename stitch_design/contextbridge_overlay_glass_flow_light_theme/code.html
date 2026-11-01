@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ContextBridge Lens - Chrome Extension Overlay</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;family=Plus+Jakarta+Sans:wght@500;600;700;800&amp;family=Fira+Code:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Plus Jakarta Sans', 'sans-serif'],
+            mono: ['Fira Code', 'monospace'],
+          },
+          boxShadow: {
+            'lens': '0 20px 70px -10px rgba(79, 70, 229, 0.14), 0 10px 30px -5px rgba(15, 23, 42, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.9)',
+            'card-glass': '0 2px 10px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.8)',
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    @layer base {
+      html, body { margin: 0; padding: 0; }
+      body { overscroll-behavior: none; }
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.4); border-radius: 9999px; }
+  </style>
+</head>
+<body class="font-sans antialiased text-slate-800 bg-[#f9fafb] min-h-screen relative overflow-x-hidden selection:bg-indigo-100 selection:text-indigo-900">
+<!-- ========================================================================= -->
+<!-- 1. REALISTIC UNDERLYING BROWSER WEBPAGE: Claude 3.7 / Light AI Chat UI   -->
+<!-- ========================================================================= -->
+<div class="min-h-screen flex flex-col bg-[#FAF9F5] text-stone-800 select-none pointer-events-none filter blur-[2px] opacity-85 transition duration-300">
+<!-- Browser Mock Bar / Extension Ribbon Indicator -->
+<div class="w-full bg-[#f0eee6] border-b border-stone-200/80 px-4 py-2 flex items-center justify-between text-xs text-stone-500">
+<div class="flex items-center gap-3">
+<div class="flex items-center gap-1.5">
+<span class="w-2.5 h-2.5 rounded-full bg-stone-300"></span>
+<span class="w-2.5 h-2.5 rounded-full bg-stone-300"></span>
+<span class="w-2.5 h-2.5 rounded-full bg-stone-300"></span>
+</div>
+<div class="bg-white/80 border border-stone-200 rounded-md px-3 py-1 flex items-center gap-2 text-stone-600 font-mono text-[11px] w-80">
+<span class="material-symbols-outlined text-[13px] text-stone-400">lock</span>
+<span>https://claude.ai/chat/c842-nextjs-streaming-analytics</span>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<span class="bg-indigo-50 text-indigo-600 border border-indigo-200/60 rounded px-2 py-0.5 font-medium text-[11px] flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> ContextBridge Active
+        </span>
+<div class="w-6 h-6 rounded-full bg-stone-200 flex items-center justify-center text-[11px] font-bold text-stone-600">JS</div>
+</div>
+</div>
+<!-- AI Chat App Header -->
+<header class="h-14 border-b border-stone-200 bg-[#FAF9F5]/90 px-6 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<div class="w-7 h-7 rounded-lg bg-[#D97706]/15 flex items-center justify-center text-[#D97706] font-display font-bold text-sm">
+          ✳
+        </div>
+<span class="font-display font-semibold text-stone-800 tracking-tight text-base">Claude 3.7 Sonnet</span>
+<span class="text-xs text-stone-400 font-mono">v3.7-20250219</span>
+</div>
+<div class="flex items-center gap-4 text-xs text-stone-500">
+<span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> 200k Token Context</span>
+<div class="h-4 w-px bg-stone-200"></div>
+<span>Project: Real-time Analytics</span>
+</div>
+</header>
+<!-- Chat Stream Scroll Container -->
+<main class="max-w-3xl w-full mx-auto px-6 py-8 flex flex-col gap-6 flex-1">
+<!-- User Turn -->
+<div class="flex gap-4 justify-end">
+<div class="max-w-xl bg-stone-200/80 text-stone-900 rounded-2xl rounded-tr-sm px-4 py-3 text-sm leading-relaxed shadow-sm">
+<p class="font-medium">Building a real-time streaming analytics dashboard with Next.js and Supabase. Can we verify pipeline benchmarks and ensure WebSockets handle high ingress before we shift to Claude?</p>
+<div class="mt-2 pt-2 border-t border-stone-300/60 text-[11px] text-stone-500 flex items-center justify-between">
+<span>Sent 2 mins ago</span>
+<span class="font-mono">schema.sql • useSocket.ts</span>
+</div>
+</div>
+<div class="w-8 h-8 rounded-full bg-stone-800 text-white flex items-center justify-center text-xs font-semibold shrink-0">
+          U
+        </div>
+</div>
+<!-- Assistant Turn -->
+<div class="flex gap-4 items-start">
+<div class="w-8 h-8 rounded-lg bg-[#D97706]/15 border border-[#D97706]/30 text-[#D97706] flex items-center justify-center font-bold text-sm shrink-0">
+          ✳
+        </div>
+<div class="flex-1 space-y-3 text-sm text-stone-800">
+<p class="leading-relaxed">
+            I've analyzed your architecture. The WebSocket pipeline handshake is optimal for real-time telemetry, reaching p95 latency under <strong>42ms</strong>.
+          </p>
+<!-- Mock Code Architecture Block -->
+<div class="rounded-xl border border-stone-200 bg-white overflow-hidden shadow-sm font-mono text-xs">
+<div class="bg-stone-50 px-3 py-2 border-b border-stone-200 flex items-center justify-between text-stone-500">
+<span class="font-medium text-stone-700">lib/analytics/stream-gateway.ts</span>
+<span class="text-[10px] uppercase tracking-wider text-stone-400">TypeScript</span>
+</div>
+<pre class="p-4 text-stone-700 leading-relaxed overflow-x-auto"><code><span class="text-indigo-600">export const</span> <span class="text-amber-600">initRealtimeStream</span> = (channelId: <span class="text-emerald-600">string</span>) =&gt; {
+  <span class="text-stone-400">// Supabase Realtime channel with sub-45ms broadcast guarantee</span>
+  <span class="text-indigo-600">const</span> channel = supabase.channel(channelId, { config: { broadcast: { self: <span class="text-purple-600">false</span> } } })
+  <span class="text-indigo-600">return</span> channel.subscribe((status) =&gt; console.info(<span class="text-emerald-700">`[Sync]: ${status}`</span>))
+}</code></pre>
+</div>
+<p class="text-stone-600 leading-relaxed">
+            Next, we should implement resilient failover states and propagate these session embeddings across your secondary AI models.
+          </p>
+</div>
+</div>
+</main>
+<!-- Chat Prompt Input Bar (Mock) -->
+<div class="border-t border-stone-200 bg-[#FAF9F5] p-4">
+<div class="max-w-3xl mx-auto rounded-2xl border border-stone-300 bg-white p-3 flex items-center justify-between shadow-sm">
+<span class="text-stone-400 text-sm pl-2">Reply to Claude 3.7 or add follow-up prompt...</span>
+<div class="flex items-center gap-2">
+<span class="w-8 h-8 rounded-lg bg-stone-100 flex items-center justify-center text-stone-400">
+<span class="material-symbols-outlined text-[18px]">attachment</span>
+</span>
+<span class="w-8 h-8 rounded-lg bg-stone-900 text-white flex items-center justify-center">
+<span class="material-symbols-outlined text-[16px]">arrow_upward</span>
+</span>
+</div>
+</div>
+</div>
+</div>
+<!-- ========================================================================= -->
+<!-- 2. EXTENSION DIMMED VEIL / AMBIENT LIGHT OVERLAY (Chrome Modal Backdrop) -->
+<!-- ========================================================================= -->
+<div class="fixed inset-0 bg-slate-900/25 backdrop-blur-[6px] z-40 transition-opacity"></div>
+<!-- Iridescent Pastel Aura / Caustic Refraction Glow Behind the Glass -->
+<div class="fixed inset-0 pointer-events-none z-40 flex items-center justify-center overflow-hidden">
+<div class="absolute w-[44rem] h-[34rem] bg-gradient-to-tr from-indigo-200/50 via-sky-200/40 to-pink-200/35 rounded-full blur-3xl transform -translate-y-4"></div>
+</div>
+<!-- ========================================================================= -->
+<!-- 3. CONTEXTBRIDGE FLOATING EXTENSION LENS (LIGHT THEME - "GLASS FLOW")     -->
+<!-- ========================================================================= -->
+<div class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-8 pointer-events-auto">
+<div class="w-full max-w-5xl rounded-2xl bg-white/85 backdrop-blur-2xl border border-white/70 shadow-lens ring-1 ring-slate-900/5 flex flex-col relative transition-all duration-300 animate-in fade-in zoom-in-95" id="bridge-extension-lens">
+<!-- Top Micro Shimmer Rim -->
+<div class="absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-indigo-400/50 to-transparent rounded-t-2xl"></div>
+<!-- Extension Top Header -->
+<div class="px-6 py-4 border-b border-slate-200/60 bg-white/50 rounded-t-2xl flex flex-wrap items-center justify-between gap-4">
+<!-- Logo + Identity -->
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-sky-400 p-2 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 ring-1 ring-white/60">
+<svg class="w-full h-full text-white" fill="none" viewbox="0 0 100 100">
+<circle cx="28" cy="62" fill="#ffffff" fill-opacity="0.95" r="14"></circle>
+<circle cx="74" cy="36" fill="#e0e7ff" r="14"></circle>
+<path d="M28 62 C40 62 46 51 51 51 C56 51 62 36 74 36" stroke="currentColor" stroke-linecap="round" stroke-width="8"></path>
+<circle cx="51" cy="51" fill="#c7d2fe" r="6"></circle>
+<path d="M34 76 C46 86 64 82 78 54" stroke="#e0e7ff" stroke-dasharray="6 6" stroke-linecap="round" stroke-width="4"></path>
+</svg>
+</div>
+<div>
+<div class="flex items-center gap-2">
+<h1 class="font-display font-bold text-slate-900 text-lg tracking-tight">ContextBridge</h1>
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 border border-indigo-200/70 text-indigo-700 font-mono text-[10px] font-semibold tracking-wide uppercase">
+<span class="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse"></span>
+                LENS EXTENSION
+              </span>
+</div>
+<p class="text-xs text-slate-500 font-medium">Move your work, not just your chat.</p>
+</div>
+</div>
+<!-- Extension Window Controls & Light Mode Capsule -->
+<div class="flex items-center gap-2.5">
+<!-- Glass Flow Style Indicator -->
+<div class="flex items-center p-0.5 rounded-full bg-slate-100/90 border border-slate-200/80 text-xs shadow-inner">
+<button class="px-2.5 py-1 rounded-full bg-white text-indigo-600 font-semibold shadow-xs flex items-center gap-1.5 transition-all text-xs" type="button">
+<span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+<span>Glass Flow</span>
+</button>
+<button class="px-2.5 py-1 rounded-full text-slate-500 hover:text-slate-800 transition-colors text-xs" type="button">
+              Fluid Glass
+            </button>
+</div>
+<button class="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200/80 text-slate-600 flex items-center justify-center transition-all border border-slate-200/60" title="Pin Overlay" type="button">
+<span class="material-symbols-outlined text-[17px]">push_pin</span>
+</button>
+<!-- Close Extension Button with Esc Shortcut -->
+<button class="group h-8 px-2.5 rounded-full bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 flex items-center gap-1 transition-all border border-slate-200/60 hover:border-rose-200" id="close-extension-btn" title="Dismiss Extension" type="button">
+<span class="material-symbols-outlined text-[16px] group-hover:rotate-90 transition-transform">close</span>
+<span class="font-mono text-[10px] text-slate-400 group-hover:text-rose-500">Esc</span>
+</button>
+</div>
+</div>
+<!-- Main Body: 2-Column Split Interface -->
+<div class="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 bg-gradient-to-b from-white/40 to-slate-50/50">
+<!-- Left Column: 3 Frosted Context Capture Cards (7 cols) -->
+<div class="lg:col-span-7 flex flex-col gap-3.5">
+<!-- Card 1: What are you working on? -->
+<div class="group relative rounded-xl bg-white/70 hover:bg-white/90 p-4 border border-indigo-100/90 shadow-card-glass transition-all duration-200">
+<div class="absolute left-0 top-3 bottom-3 w-1 bg-gradient-to-b from-indigo-500 via-sky-400 to-indigo-600 rounded-r-full"></div>
+<div class="flex items-center justify-between mb-1.5 pl-1.5">
+<div class="flex items-center gap-1.5 text-indigo-600">
+<span class="material-symbols-outlined text-[18px]">auto_awesome</span>
+<label class="font-display font-semibold text-xs tracking-tight text-slate-900" for="ctx-current">What are you working on?</label>
+</div>
+<span class="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 font-mono text-[11px] font-medium border border-indigo-100">
+                claude.ai (Live Tab)
+              </span>
+</div>
+<textarea class="w-full bg-transparent resize-none text-slate-800 text-xs font-normal border-0 p-1.5 focus:ring-0 focus:outline-none placeholder:text-slate-400 leading-relaxed" id="ctx-current" rows="2">Building a real-time streaming analytics dashboard with Next.js and Supabase...</textarea>
+<div class="flex items-center justify-between pt-1 pl-1.5 text-[11px] text-slate-500 border-t border-slate-100">
+<span class="flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> 3 files referenced in prompt
+              </span>
+<span class="font-mono text-slate-400">Auto-captured</span>
+</div>
+</div>
+<!-- Card 2: What's been completed? -->
+<div class="group relative rounded-xl bg-white/70 hover:bg-white/90 p-4 border border-slate-200/70 shadow-card-glass transition-all duration-200">
+<div class="flex items-center justify-between mb-1.5">
+<div class="flex items-center gap-1.5 text-purple-600">
+<span class="material-symbols-outlined text-[18px]">check_circle</span>
+<label class="font-display font-semibold text-xs tracking-tight text-slate-900" for="ctx-completed">What's been completed?</label>
+</div>
+<span class="font-mono text-[11px] text-slate-500">Stage 2/3 verified</span>
+</div>
+<textarea class="w-full bg-transparent resize-none text-slate-700 text-xs font-normal border-0 p-1 focus:ring-0 focus:outline-none placeholder:text-slate-400 leading-relaxed" id="ctx-completed" rows="2">Configured authentication, connected WebSocket gateway, and validated pipeline benchmarks.</textarea>
+<div class="flex items-center gap-1.5 pt-1.5 flex-wrap">
+<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-medium border border-slate-200/60">Supabase Auth</span>
+<span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-medium border border-slate-200/60">Socket.io Handshake</span>
+<span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-mono font-medium border border-emerald-200/60">p95 &lt; 42ms</span>
+</div>
+</div>
+<!-- Card 3: What's next? -->
+<div class="group relative rounded-xl bg-white/70 hover:bg-white/90 p-4 border border-slate-200/70 shadow-card-glass transition-all duration-200">
+<div class="flex items-center justify-between mb-1.5">
+<div class="flex items-center gap-1.5 text-pink-600">
+<span class="material-symbols-outlined text-[18px]">explore</span>
+<label class="font-display font-semibold text-xs tracking-tight text-slate-900" for="ctx-next">What's next?</label>
+</div>
+<span class="flex items-center gap-1 text-pink-600 font-mono text-[11px] font-medium">
+<span class="material-symbols-outlined text-[14px]">bolt</span> Ready to Hand-off
+              </span>
+</div>
+<textarea class="w-full bg-transparent resize-none text-slate-700 text-xs font-normal border-0 p-1 focus:ring-0 focus:outline-none placeholder:text-slate-400 leading-relaxed" id="ctx-next" rows="2">Design resilient error states and migrate context session into Claude 3.7 &amp; Gemini Pro.</textarea>
+<div class="flex items-center justify-between pt-1.5 flex-wrap gap-2">
+<div class="flex items-center gap-2">
+<button class="px-2.5 py-1 rounded-full bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200/60 text-[11px] font-medium flex items-center gap-1 transition-all" type="button">
+<span>Send to Claude 3.7</span>
+<span class="material-symbols-outlined text-[12px]">arrow_forward</span>
+</button>
+<button class="px-2.5 py-1 rounded-full bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/60 text-[11px] font-medium flex items-center gap-1 transition-all" type="button">
+<span>Synthesize to Gemini</span>
+</button>
+</div>
+<span class="font-mono text-[11px] text-slate-400">Target: 2 open tabs</span>
+</div>
+</div>
+</div>
+<!-- Right Column: Visual Connection Showcase Card (5 cols) -->
+<div class="lg:col-span-5 flex flex-col justify-between rounded-xl bg-gradient-to-b from-white/90 via-indigo-50/40 to-white/95 p-5 border border-indigo-100/80 shadow-card-glass relative overflow-hidden">
+<!-- Subtle Pastel Iridescent Corner Glow -->
+<div class="absolute -right-8 -top-8 w-40 h-40 bg-indigo-300/20 rounded-full blur-2xl pointer-events-none"></div>
+<div class="absolute -left-8 -bottom-8 w-40 h-40 bg-pink-200/25 rounded-full blur-2xl pointer-events-none"></div>
+<div>
+<!-- Pill Status -->
+<div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200/60 text-indigo-700 text-xs font-semibold mb-3">
+<span class="w-2 h-2 rounded-full bg-indigo-600 animate-pulse"></span>
+<span class="font-mono text-[10px] tracking-wider uppercase">Cross-Model Sync Ready</span>
+</div>
+<h2 class="font-display font-bold text-slate-900 text-base leading-snug tracking-tight">
+              Your context, across every AI.
+            </h2>
+<p class="text-xs text-slate-600 mt-1 leading-relaxed">
+              Preserves technical intent, file pointers, and conversational context without copying raw chat history.
+            </p>
+</div>
+<!-- Abstract Interconnected Node Bridge Graphic -->
+<div class="my-4 relative w-full h-44 rounded-xl bg-white/80 border border-indigo-100/70 p-3.5 flex flex-col justify-between shadow-xs">
+<div class="flex justify-between items-center text-[10px] font-medium text-slate-400 uppercase tracking-wider">
+<span>Mesh Session Fabric</span>
+<span class="text-indigo-600 font-mono font-semibold lowercase">latency: 18ms</span>
+</div>
+<!-- Vector Connecting Curves -->
+<div class="relative w-full h-24 my-auto flex items-center justify-center">
+<svg class="w-full h-full" fill="none" viewbox="0 0 320 90">
+<!-- Soft Glow Path -->
+<path d="M 40 45 C 95 15, 130 75, 170 45 C 215 15, 245 65, 280 45" stroke="#818cf8" stroke-linecap="round" stroke-opacity="0.3" stroke-width="8"></path>
+<!-- Crisp Gradient Signal Line -->
+<path d="M 40 45 C 95 15, 130 75, 170 45 C 215 15, 245 65, 280 45" stroke="url(#lightArcGrad)" stroke-linecap="round" stroke-width="2.5"></path>
+<!-- Dashed Secondary Arc -->
+<path d="M 40 45 C 95 85, 220 85, 280 45" stroke="#c084fc" stroke-dasharray="4 4" stroke-opacity="0.6" stroke-width="1.5"></path>
+<defs>
+<lineargradient id="lightArcGrad" x1="0%" x2="100%" y1="0%" y2="0%">
+<stop offset="0%" stop-color="#4f46e5"></stop>
+<stop offset="50%" stop-color="#8b5cf6"></stop>
+<stop offset="100%" stop-color="#ec4899"></stop>
+</lineargradient>
+</defs>
+</svg>
+<!-- Node 1: Cursor / IDE -->
+<div class="absolute left-3 flex flex-col items-center group cursor-pointer" title="Cursor IDE Hook">
+<div class="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-md ring-2 ring-white">
+<span class="material-symbols-outlined text-[16px]">terminal</span>
+</div>
+<span class="font-sans text-[10px] font-semibold text-slate-700 mt-1">Cursor</span>
+</div>
+<!-- Node 2: Claude (Active Tab) -->
+<div class="absolute left-[38%] -top-0.5 flex flex-col items-center group cursor-pointer" title="Claude 3.7 Active Source">
+<div class="w-8 h-8 rounded-lg bg-[#D97706]/15 border border-[#D97706]/40 text-[#D97706] flex items-center justify-center shadow-md ring-2 ring-white font-bold text-xs">
+                  ✳
+                </div>
+<span class="font-sans text-[10px] font-bold text-indigo-700 mt-1 flex items-center gap-0.5">
+                  Claude <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+</span>
+</div>
+<!-- Central Pulse Kernel -->
+<div class="absolute left-[54%] top-7 flex items-center justify-center pointer-events-none">
+<span class="relative flex h-3 w-3">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+<span class="relative inline-flex rounded-full h-3 w-3 bg-indigo-600"></span>
+</span>
+</div>
+<!-- Node 3: Gemini / Target -->
+<div class="absolute right-3 flex flex-col items-center group cursor-pointer" title="Gemini Pro Receiver">
+<div class="w-8 h-8 rounded-lg bg-sky-100 border border-sky-300 text-sky-600 flex items-center justify-center shadow-md ring-2 ring-white">
+<span class="material-symbols-outlined text-[16px]">temp_preferences_custom</span>
+</div>
+<span class="font-sans text-[10px] font-semibold text-slate-700 mt-1">Gemini</span>
+</div>
+</div>
+<div class="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+<span class="font-mono text-[10px]">DIRECT TAB-TO-TAB MESH</span>
+<span class="text-emerald-600 font-medium flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Zero Telemetry
+              </span>
+</div>
+</div>
+<!-- Bottom Engine Badges -->
+<div class="flex items-center justify-between pt-1 border-t border-slate-200/60">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+<span class="text-xs font-medium text-slate-700">ChatGPT-4o</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-amber-500"></span>
+<span class="text-xs font-semibold text-slate-900">Claude 3.7</span>
+</div>
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-sky-500"></span>
+<span class="text-xs font-medium text-slate-700">Gemini 2.0</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Extension Bottom Action Dock -->
+<div class="px-6 py-4 bg-white/70 border-t border-slate-200/60 rounded-b-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+<!-- Tab & Privacy Telemetry Info -->
+<div class="flex items-center gap-2 text-xs text-slate-600 font-medium flex-wrap">
+<span class="inline-flex items-center gap-1 text-slate-700">
+<span class="material-symbols-outlined text-[15px] text-indigo-600">tab</span>
+            Active Tab: <span class="font-mono text-indigo-700 font-semibold">claude.ai</span>
+</span>
+<span class="text-slate-300">•</span>
+<span class="inline-flex items-center gap-1 font-mono text-slate-700">
+<span class="material-symbols-outlined text-[15px] text-indigo-500">token</span>
+            ~1,420 tokens
+          </span>
+<span class="text-slate-300">•</span>
+<span class="inline-flex items-center gap-1 text-emerald-700 font-medium">
+<span class="material-symbols-outlined text-[15px] text-emerald-600">lock</span>
+            Local only
+          </span>
+</div>
+<!-- Action CTAs -->
+<div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+<button class="px-4 py-2 rounded-full bg-slate-100 hover:bg-slate-200/70 text-slate-700 text-xs font-semibold transition-all border border-slate-200/80" type="button">
+            Quick Snapshot
+          </button>
+<button class="group px-5 py-2 rounded-full bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-semibold shadow-md shadow-indigo-500/25 hover:shadow-lg hover:shadow-indigo-500/35 active:scale-95 transition-all flex items-center gap-1.5" id="btn-generate-context" type="button">
+<span id="btn-text">Generate Context</span>
+<span class="material-symbols-outlined text-[16px] transition-transform group-hover:translate-x-0.5">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Ambient Keyboard Shortcut Pill Bottom Floating -->
+<div class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex items-center gap-2 px-3 py-1 rounded-full bg-white/90 backdrop-blur-md border border-slate-200 shadow-md text-[11px] text-slate-600">
+<span>Press <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-800 font-mono font-semibold">⌘</kbd> + <kbd class="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-800 font-mono font-semibold">K</kbd> to toggle bridge lens anytime</span>
+<span class="text-slate-300">•</span>
+<span class="text-indigo-600 font-medium">Configure hotkeys</span>
+</div>
+<!-- Interactive Script -->
+<script>
+    (function() {
+      const closeBtn = document.getElementById('close-extension-btn');
+      const lens = document.getElementById('bridge-extension-lens');
+      const generateBtn = document.getElementById('btn-generate-context');
+      const btnText = document.getElementById('btn-text');
+
+      if (closeBtn && lens) {
+        closeBtn.addEventListener('click', () => {
+          lens.classList.add('opacity-0', 'scale-95');
+          setTimeout(() => {
+            lens.classList.remove('opacity-0', 'scale-95');
+          }, 1200);
+        });
+      }
+
+      if (generateBtn && btnText) {
+        generateBtn.addEventListener('click', () => {
+          const original = btnText.textContent;
+          btnText.textContent = 'Context Synced! ✓';
+          generateBtn.classList.add('ring-2', 'ring-emerald-400');
+          setTimeout(() => {
+            btnText.textContent = original;
+            generateBtn.classList.remove('ring-2', 'ring-emerald-400');
+          }, 1800);
+        });
+      }
+
+      // Keyboard Esc listener simulation
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && lens) {
+          lens.classList.add('opacity-30', 'scale-98');
+          setTimeout(() => {
+            lens.classList.remove('opacity-30', 'scale-98');
+          }, 600);
+        }
+      });
+    })();
+  </script>
+</body></html>
