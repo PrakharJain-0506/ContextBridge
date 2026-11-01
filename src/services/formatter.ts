@@ -1,5 +1,17 @@
 import { ContextItem, OutputFormat, TemplatePreset } from '../types';
 
+export function formatPlatformName(platform?: string): string {
+  switch (platform) {
+    case 'gemini': return 'Google Gemini';
+    case 'claude': return 'Claude';
+    case 'perplexity': return 'Perplexity';
+    case 'copilot': return 'Microsoft Copilot';
+    case 'grok': return 'Grok';
+    case 'chatgpt': return 'ChatGPT';
+    default: return 'AI';
+  }
+}
+
 export function formatContextPackage(
   data: Partial<ContextItem>,
   format: OutputFormat = 'standard',
@@ -10,8 +22,9 @@ export function formatContextPackage(
 
   // Primary source: If an automatically captured conversation exists, package it directly!
   if (hasCaptured) {
-    const title = (data.projectName || conversation.pageTitle || 'ChatGPT Conversation Session').trim();
-    const notice = conversation.sourceNotice || 'ContextBridge captured the conversation currently loaded on this page.';
+    const platformName = conversation.platformName || formatPlatformName(conversation.platform);
+    const title = (data.projectName || conversation.pageTitle || `${platformName} Conversation Session`).trim();
+    const notice = conversation.sourceNotice || `ContextBridge captured the conversation currently loaded on this page.`;
     const msgCount = conversation.messages.length;
 
     // Optional user supplements
@@ -23,7 +36,7 @@ export function formatContextPackage(
     switch (format) {
       case 'markdown': {
         const turnsMd = conversation.messages.map((m) => {
-          const roleLabel = m.role === 'user' ? 'User' : 'Assistant (ChatGPT)';
+          const roleLabel = m.role === 'user' ? 'User' : `Assistant (${platformName})`;
           return `### ${roleLabel}\n${m.content.trim()}`;
         }).join('\n\n');
 
@@ -37,7 +50,7 @@ export function formatContextPackage(
         }
 
         return `# ContextBridge: ${title}
-*Source: ChatGPT • ${msgCount} messages captured*
+*Source: ${platformName} • ${msgCount} messages captured*
 
 > **Notice:** ${notice}
 
@@ -61,7 +74,7 @@ ${turnsMd}${suppMd}
             `  </supplements>`;
         }
 
-        return `<context_bridge source="chatgpt" messages="${msgCount}">
+        return `<context_bridge source="${conversation.platform}" platform="${escapeXml(platformName)}" messages="${msgCount}">
   <meta>
     <project>${escapeXml(title)}</project>
     <notice>${escapeXml(notice)}</notice>
@@ -78,17 +91,17 @@ ${turnsXml}
           .map((m) => `${m.role.toUpperCase()}: ${m.content.replace(/\s+/g, ' ').slice(0, 120)}...`)
           .join(' | ');
         const nextPart = data.nextSteps ? ` | NEXT: ${data.nextSteps.replace(/\s+/g, ' ')}` : '';
-        return `[CONTEXTBRIDGE: CHATGPT (${msgCount} msgs)] ${title} | NOTICE: ${notice} | ${snippet}${nextPart}`;
+        return `[CONTEXTBRIDGE: ${platformName.toUpperCase()} (${msgCount} msgs)] ${title} | NOTICE: ${notice} | ${snippet}${nextPart}`;
       }
 
       case 'standard':
       default: {
         const metaHeader = includeMetaInstruction
-          ? `[SYSTEM CONTEXT: The user is transferring their active working context from ChatGPT. Review the captured conversation transcript below and continue the task directly without asking the user to re-explain.]\n\n`
+          ? `[SYSTEM CONTEXT: The user is transferring their active working context from ${platformName}. Review the captured conversation transcript below and continue the task directly without asking the user to re-explain.]\n\n`
           : '';
 
         const transcript = conversation.messages.map((m) => {
-          const roleLabel = m.role === 'user' ? '[USER]' : '[ASSISTANT (CHATGPT)]';
+          const roleLabel = m.role === 'user' ? '[USER]' : `[ASSISTANT (${platformName.toUpperCase()})]`;
           return `${roleLabel}:\n${m.content.trim()}`;
         }).join('\n\n');
 
@@ -102,13 +115,12 @@ ${turnsXml}
         }
 
         return `${metaHeader}PROJECT: ${title}
-SOURCE: ChatGPT (Auto-Captured)
+SOURCE: ${platformName} (Auto-Captured)
 MESSAGES CAPTURED: ${msgCount}
 STATUS: ${notice}
 
 CONVERSATION TRANSCRIPT:
-----------------------------------------
-${transcript}${suppText}`;
+----------------------------------------\n${transcript}${suppText}`;
       }
     }
   }

@@ -35,20 +35,42 @@
     format: 'standard'
   };
 
-  // Centralized DOM Selectors & Extraction Rules for ChatGPT
-  // Configured with multiple fallback selectors and role prioritization
-  const CHATGPT_CONFIG = {
-    hostnames: ['chatgpt.com', 'chat.openai.com'],
-    selectors: {
-      candidateSelectors: [
-        '[data-message-author-role]',
-        'article[data-testid^="conversation-turn-"]',
-        'div[data-testid^="conversation-turn-"]',
-        '[data-testid^="conversation-turn-"]',
-        'main article'
-      ],
-      roleAttribute: 'data-message-author-role', // 'user' | 'assistant'
-      ignoreElements: [
+  // =========================================================================
+  // MULTI-PLATFORM AI EXTRACTORS & REGISTRY
+  // Modular architecture supporting ChatGPT, Google Gemini, Claude, Perplexity,
+  // Microsoft Copilot, and Grok with normalized common conversation format.
+  // =========================================================================
+
+  // Shared Extractor Utilities
+  const CommonExtractorUtils = {
+    isMeaningfulContent(text, extraBoilerplate = []) {
+      if (!text || typeof text !== 'string') return false;
+      const clean = text.trim();
+      if (clean.length < 2) return false;
+
+      const defaultBoilerplate = [
+        'ChatGPT can make mistakes. Check important info.',
+        'Search the web',
+        'Message ChatGPT',
+        'ChatGPT',
+        'Copy code',
+        'Ask Gemini',
+        'Gemini may display inaccurate info',
+        'Claude is AI and can make mistakes',
+        'Perplexity',
+        'Ask follow-up',
+        'Copilot may make mistakes',
+        'Grok can make mistakes'
+      ];
+      const all = [...defaultBoilerplate, ...extraBoilerplate];
+      return !all.some(b => clean.toLowerCase() === b.toLowerCase());
+    },
+
+    extractCleanMessageText(node, customIgnoreSelectors = []) {
+      if (!node) return '';
+      const clone = node.cloneNode(true);
+
+      const defaultIgnore = [
         'button',
         'svg',
         '.sr-only',
@@ -63,8 +85,903 @@
         '[aria-label*="listen" i]',
         '[aria-label*="thumbs" i]',
         '[class*="agent-turn-actions"]',
+        '[class*="citation"]',
+        '#contextbridge-overlay-root'
+      ];
+      const ignoreSelectors = [...defaultIgnore, ...customIgnoreSelectors];
+
+      ignoreSelectors.forEach(selector => {
+        try {
+          const matches = clone.querySelectorAll(selector);
+          matches.forEach(el => el.remove());
+        } catch (e) {}
+      });
+
+      try {
+        const codeBlocks = clone.querySelectorAll('pre');
+        codeBlocks.forEach(pre => {
+          let lang = '';
+          const codeEl = pre.querySelector('code');
+          if (codeEl) {
+            const match = (codeEl.className || '').match(/language-([a-zA-Z0-9_\-#+]+)/);
+            if (match) lang = match[1];
+          }
+          const codeText = (codeEl ? codeEl.textContent : pre.textContent) || '';
+          const replacement = document.createTextNode(`\n\n\`\`\`${lang}\n${codeText.trim()}\n\`\`\`\n\n`);
+          if (pre.parentNode) {
+            pre.parentNode.replaceChild(replacement, pre);
+          }
+        });
+      } catch (e) {}
+
+      let text = clone.innerText !== undefined ? clone.innerText : clone.textContent || '';
+      return text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    },
+
+    sortElementsInDocumentOrder(elements) {
+      return Array.from(elements).sort((a, b) => {
+        if (a === b) return 0;
+        const pos = a.compareDocumentPosition(b);
+        if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+        if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+        return 0;
+      });
+    },
+
+    cleanPageTitle(rawTitle, platformPattern = '') {
+      let title = (rawTitle || '').trim();
+      if (platformPattern) {
+        title = title.replace(new RegExp(`\\s*[-–|]\\s*${platformPattern}.*$`, 'i'), '');
+        title = title.replace(new RegExp(`^${platformPattern}\\s*[-–|]\\s*`, 'i'), '');
+      }
+      title = title
+        .replace(/\s*[-–|]\s*(ChatGPT|Gemini|Claude|Perplexity|Copilot|Grok).*$/i, '')
+        .trim();
+      return title || 'Active AI Session';
+    }
+  };
+
+  // 1. ChatGPT Extractor (Preserved exactly as tested)
+  const chatgptExtractor = {
+    id: 'chatgpt',
+    name: 'ChatGPT',
+    hostnames: ['chatgpt.com', 'chat.openai.com'],
+    matches(h) {
+      return this.hostnames.some(d => h === d || h.endsWith('.' + d));
+    },
+    selectors: {
+      candidateSelectors: [
+        '[data-message-author-role]',
+        'article[data-testid^="conversation-turn-"]',
+        'div[data-testid^="conversation-turn-"]',
+        '[data-testid^="conversation-turn-"]',
+        'main article'
+      ],
+      roleAttribute: 'data-message-author-role',
+      ignoreElements: [
+        'button', 'svg', '.sr-only', '[aria-hidden="true"]',
+        '[data-testid*="action-button"]', '[data-testid*="copy-turn-action-button"]',
+        '[aria-label="Copy"]', '[aria-label="Read aloud"]', '[aria-label="Good response"]',
+        '[aria-label="Bad response"]', '[aria-label*="copy" i]', '[aria-label*="listen" i]',
+        '[aria-label*="thumbs" i]', '[class*="agent-turn-actions"]', '#contextbridge-overlay-root'
+      ]
+    },
+    resolveRole(el, fallbackIndex = 0) {
+      if (!el) return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
+      if (el.hasAttribute && el.hasAttribute(this.selectors.roleAttribute)) {
+        const attr = (el.getAttribute(this.selectors.roleAttribute) || '').toLowerCase();
+        if (attr === 'assistant') return 'assistant';
+        if (attr === 'user') return 'user';
+      }
+      const roleChild = el.querySelector ? el.querySelector(`[${this.selectors.roleAttribute}]`) : null;
+      if (roleChild) {
+        const attr = (roleChild.getAttribute(this.selectors.roleAttribute) || '').toLowerCase();
+        if (attr === 'assistant') return 'assistant';
+        if (attr === 'user') return 'user';
+      }
+      if (el.querySelector) {
+        if (el.querySelector('.markdown') || el.querySelector('[data-testid="agent-turn"]') || (el.classList && el.classList.contains('agent-turn'))) {
+          return 'assistant';
+        }
+        if (el.querySelector('[class*="user-message"]') || el.querySelector('.whitespace-pre-wrap')) {
+          return 'user';
+        }
+      }
+      return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
+    },
+    extract() {
+      console.log(`[ContextBridge] Starting ChatGPT conversation detection on: "${window.location.hostname}"`);
+      const selectorCounts = {};
+      this.selectors.candidateSelectors.forEach(sel => {
+        try {
+          const found = document.querySelectorAll(sel);
+          const valid = Array.from(found).filter(el => !el.closest('#contextbridge-overlay-root'));
+          selectorCounts[sel] = valid.length;
+        } catch (err) {
+          selectorCounts[sel] = 0;
+        }
+        console.log(`[ContextBridge] Selector "${sel}" found ${selectorCounts[sel]} element(s)`);
+      });
+
+      let extractedMessages = [];
+      let extractionMethod = null;
+
+      // Strategy 1: Prioritize role-based detection ([data-message-author-role])
+      const roleNodes = Array.from(
+        document.querySelectorAll('[data-message-author-role="user"], [data-message-author-role="assistant"], [data-message-author-role]')
+      ).filter(el => !el.closest('#contextbridge-overlay-root'));
+
+      if (roleNodes.length > 0) {
+        const sortedRoleNodes = CommonExtractorUtils.sortElementsInDocumentOrder(roleNodes);
+        const seenTexts = new Set();
+        sortedRoleNodes.forEach((node, idx) => {
+          const role = this.resolveRole(node, idx);
+          const text = CommonExtractorUtils.extractCleanMessageText(node, this.selectors.ignoreElements);
+          if (CommonExtractorUtils.isMeaningfulContent(text) && !seenTexts.has(text)) {
+            seenTexts.add(text);
+            extractedMessages.push({
+              id: `msg-${extractedMessages.length + 1}`,
+              role: role,
+              content: text
+            });
+          }
+        });
+        if (extractedMessages.length > 0) {
+          extractionMethod = 'Role-based ([data-message-author-role])';
+        }
+      }
+
+      // Strategy 2: Evaluate turn containers
+      if (extractedMessages.length === 0) {
+        const turnSelector = 'article[data-testid^="conversation-turn-"], div[data-testid^="conversation-turn-"], [data-testid^="conversation-turn-"], main article';
+        const rawTurnNodes = Array.from(document.querySelectorAll(turnSelector))
+          .filter(el => !el.closest('#contextbridge-overlay-root'));
+
+        if (rawTurnNodes.length > 0) {
+          const dedupedTurns = rawTurnNodes.filter(el => !rawTurnNodes.some(other => other !== el && other.contains(el)));
+          const sortedTurns = CommonExtractorUtils.sortElementsInDocumentOrder(dedupedTurns);
+          const seenTexts = new Set();
+
+          sortedTurns.forEach((turn, idx) => {
+            const role = this.resolveRole(turn, idx);
+            let contentNode = turn;
+            if (role === 'assistant') {
+              const md = turn.querySelector('.markdown') || turn.querySelector('[class*="prose"]');
+              if (md) contentNode = md;
+            } else {
+              const userBox = turn.querySelector('.whitespace-pre-wrap') || turn.querySelector('[class*="user-message"]');
+              if (userBox) contentNode = userBox;
+            }
+
+            const text = CommonExtractorUtils.extractCleanMessageText(contentNode, this.selectors.ignoreElements);
+            if (CommonExtractorUtils.isMeaningfulContent(text) && !seenTexts.has(text)) {
+              seenTexts.add(text);
+              extractedMessages.push({
+                id: `msg-${extractedMessages.length + 1}`,
+                role: role,
+                content: text
+              });
+            }
+          });
+
+          if (extractedMessages.length > 0) {
+            extractionMethod = 'Turn Containers (articles / testids)';
+          }
+        }
+      }
+
+      // Strategy 3: Main chat area fallback
+      if (extractedMessages.length === 0) {
+        const mainChatArea = document.querySelector('main') || document.querySelector('[role="main"]');
+        if (mainChatArea) {
+          const candidateBlocks = Array.from(
+            mainChatArea.querySelectorAll('.markdown, [class*="markdown"], .whitespace-pre-wrap, [class*="user-message"], [class*="agent-turn"]')
+          ).filter(el => {
+            if (el.closest('#contextbridge-overlay-root')) return false;
+            if (el.closest('header, nav, aside, form, footer, [role="navigation"]')) return false;
+            return true;
+          });
+
+          const dedupedBlocks = candidateBlocks.filter(el => !candidateBlocks.some(other => other !== el && other.contains(el)));
+          const sortedBlocks = CommonExtractorUtils.sortElementsInDocumentOrder(dedupedBlocks);
+          const seenTexts = new Set();
+
+          sortedBlocks.forEach((block, idx) => {
+            const role = this.resolveRole(block, idx);
+            const text = CommonExtractorUtils.extractCleanMessageText(block, this.selectors.ignoreElements);
+            if (CommonExtractorUtils.isMeaningfulContent(text) && !seenTexts.has(text)) {
+              seenTexts.add(text);
+              extractedMessages.push({
+                id: `msg-${extractedMessages.length + 1}`,
+                role: role,
+                content: text
+              });
+            }
+          });
+
+          if (extractedMessages.length > 0) {
+            extractionMethod = 'Main Chat Area Fallback (prose & text containers)';
+          }
+        }
+      }
+
+      // Logging
+      if (extractedMessages.length > 0) {
+        console.log(`[ContextBridge] Conversation extraction SUCCEEDED via ${extractionMethod}.`);
+        console.log(`[ContextBridge] Extracted ${extractedMessages.length} valid conversation turns (${Math.ceil(extractedMessages.length / 2)} conversational exchanges).`);
+      } else {
+        let failReason = 'No valid conversation elements found.';
+        const totalElementsFound = Object.values(selectorCounts).reduce((a, b) => a + b, 0);
+        if (totalElementsFound === 0) {
+          failReason = 'None of the conversation turn selectors matched elements in the DOM.';
+        } else {
+          failReason = `${totalElementsFound} element(s) were matched by selectors, but none contained valid, meaningful text.`;
+        }
+        console.log(`[ContextBridge] Conversation extraction FAILED: ${failReason}`);
+      }
+
+      const pageTitle = CommonExtractorUtils.cleanPageTitle(document.title, 'ChatGPT');
+      return {
+        platform: 'chatgpt',
+        platformName: 'ChatGPT',
+        detected: extractedMessages.length > 0,
+        pageTitle: pageTitle,
+        url: window.location.href,
+        capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        messages: extractedMessages,
+        messageCount: extractedMessages.length,
+        turnCount: Math.ceil(extractedMessages.length / 2),
+        isPartial: true,
+        sourceNotice: 'ContextBridge captured the conversation currently loaded on this page.'
+      };
+    }
+  };
+
+  // 2. Google Gemini Extractor
+  const geminiExtractor = {
+    id: 'gemini',
+    name: 'Google Gemini',
+    hostnames: ['gemini.google.com', 'bard.google.com'],
+    matches(h) {
+      return this.hostnames.some(d => h === d || h.endsWith('.' + d));
+    },
+    selectors: {
+      candidateSelectors: [
+        'user-query, model-response',
+        '[data-testid="user-query"], [data-testid="model-response"]',
+        '.user-query-container, .model-response-container',
+        'div.user-query, div.model-response',
+        'user-query-content, message-content',
+        'main .query-text, main .model-response-text'
+      ],
+      ignoreElements: [
+        'button', 'svg', '.sr-only', '[aria-hidden="true"]', 'mat-icon',
+        '.mat-mdc-button', '[aria-label*="Listen" i]', '[aria-label*="Copy" i]',
+        '[aria-label*="Share" i]', '[aria-label*="Modify" i]', '[aria-label*="Good response" i]',
+        '[aria-label*="Bad response" i]', '#contextbridge-overlay-root'
+      ]
+    },
+    resolveRole(el, fallbackIndex = 0) {
+      if (!el) return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
+      const tag = (el.tagName || '').toLowerCase();
+      const cls = (el.className || '').toString().toLowerCase();
+
+      if (tag === 'user-query' || cls.includes('user-query') || (el.closest && el.closest('user-query'))) {
+        return 'user';
+      }
+      if (tag === 'model-response' || cls.includes('model-response') || (el.closest && el.closest('model-response'))) {
+        return 'assistant';
+      }
+      if (cls.includes('query') || cls.includes('user')) return 'user';
+      if (cls.includes('response') || cls.includes('model') || el.querySelector('.markdown') || el.querySelector('message-content')) {
+        return 'assistant';
+      }
+      return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
+    },
+    extract() {
+      console.log(`[ContextBridge] Starting Google Gemini conversation detection on: "${window.location.hostname}"`);
+      const selectorCounts = {};
+      this.selectors.candidateSelectors.forEach(sel => {
+        try {
+          const found = document.querySelectorAll(sel);
+          const valid = Array.from(found).filter(el => !el.closest('#contextbridge-overlay-root'));
+          selectorCounts[sel] = valid.length;
+        } catch (err) {
+          selectorCounts[sel] = 0;
+        }
+        console.log(`[ContextBridge] Selector "${sel}" found ${selectorCounts[sel]} element(s)`);
+      });
+
+      let extractedMessages = [];
+      let extractionMethod = null;
+
+      // Strategy 1: Angular Custom Elements (<user-query>, <model-response>)
+      const customNodes = Array.from(
+        document.querySelectorAll('user-query, model-response, .user-query-container, .model-response-container')
+      ).filter(el => !el.closest('#contextbridge-overlay-root'));
+
+      if (customNodes.length > 0) {
+        const deduped = customNodes.filter(el => !customNodes.some(other => other !== el && other.contains(el)));
+        const sortedNodes = CommonExtractorUtils.sortElementsInDocumentOrder(deduped);
+        const seenTexts = new Set();
+
+        sortedNodes.forEach((node, idx) => {
+          const role = this.resolveRole(node, idx);
+          let contentNode = node;
+          if (role === 'user') {
+            contentNode = node.querySelector('.query-text') || node.querySelector('user-query-content') || node;
+          } else {
+            contentNode = node.querySelector('.model-response-text') || node.querySelector('message-content') || node.querySelector('.markdown') || node;
+          }
+
+          const text = CommonExtractorUtils.extractCleanMessageText(contentNode, this.selectors.ignoreElements);
+          if (CommonExtractorUtils.isMeaningfulContent(text, ['Ask Gemini', 'Gemini may display inaccurate info']) && !seenTexts.has(text)) {
+            seenTexts.add(text);
+            extractedMessages.push({
+              id: `msg-${extractedMessages.length + 1}`,
+              role: role,
+              content: text
+            });
+          }
+        });
+
+        if (extractedMessages.length > 0) {
+          extractionMethod = 'Gemini Custom Elements (<user-query>, <model-response>)';
+        }
+      }
+
+      // Strategy 2: Fallback to feed containers
+      if (extractedMessages.length === 0) {
+        const candidateTurns = Array.from(document.querySelectorAll('main [class*="query"], main [class*="response"], main message-content'))
+          .filter(el => !el.closest('#contextbridge-overlay-root'))
+          .filter(el => !el.closest('header, nav, aside, rich-textarea'));
+
+        if (candidateTurns.length > 0) {
+          const deduped = candidateTurns.filter(el => !candidateTurns.some(other => other !== el && other.contains(el)));
+          const sortedTurns = CommonExtractorUtils.sortElementsInDocumentOrder(deduped);
+          const seenTexts = new Set();
+
+          sortedTurns.forEach((turn, idx) => {
+            const role = this.resolveRole(turn, idx);
+            const text = CommonExtractorUtils.extractCleanMessageText(turn, this.selectors.ignoreElements);
+            if (CommonExtractorUtils.isMeaningfulContent(text) && !seenTexts.has(text)) {
+              seenTexts.add(text);
+              extractedMessages.push({
+                id: `msg-${extractedMessages.length + 1}`,
+                role: role,
+                content: text
+              });
+            }
+          });
+
+          if (extractedMessages.length > 0) {
+            extractionMethod = 'Gemini Feed Containers Fallback';
+          }
+        }
+      }
+
+      if (extractedMessages.length > 0) {
+        console.log(`[ContextBridge] Conversation extraction SUCCEEDED via ${extractionMethod}.`);
+        console.log(`[ContextBridge] Extracted ${extractedMessages.length} valid conversation turns (${Math.ceil(extractedMessages.length / 2)} conversational exchanges).`);
+      } else {
+        console.log(`[ContextBridge] Conversation extraction FAILED: No valid Gemini conversation elements found.`);
+      }
+
+      const pageTitle = CommonExtractorUtils.cleanPageTitle(document.title, 'Gemini');
+      return {
+        platform: 'gemini',
+        platformName: 'Google Gemini',
+        detected: extractedMessages.length > 0,
+        pageTitle: pageTitle,
+        url: window.location.href,
+        capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        messages: extractedMessages,
+        messageCount: extractedMessages.length,
+        turnCount: Math.ceil(extractedMessages.length / 2),
+        isPartial: true,
+        sourceNotice: 'ContextBridge captured the conversation currently loaded on this page.'
+      };
+    }
+  };
+
+  // 3. Claude Extractor
+  const claudeExtractor = {
+    id: 'claude',
+    name: 'Claude',
+    hostnames: ['claude.ai'],
+    matches(h) {
+      return this.hostnames.some(d => h === d || h.endsWith('.' + d));
+    },
+    selectors: {
+      candidateSelectors: [
+        '[data-testid="user-message"], [data-testid="assistant-message"]',
+        '.font-user-message, .font-claude-message',
+        '[data-testid="chat-message-content"]',
+        '[data-testid="conversation-turn"]',
+        'div[data-is-streaming]'
+      ],
+      ignoreElements: [
+        'button', 'svg', '.sr-only', '[aria-hidden="true"]',
+        '[aria-label*="Copy" i]', '[aria-label*="Retry" i]',
+        '[data-testid*="feedback"]', '[data-testid*="action"]',
+        '[class*="artifact-panel"]', '#contextbridge-overlay-root'
+      ]
+    },
+    resolveRole(el, fallbackIndex = 0) {
+      if (!el) return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
+      const testId = (el.getAttribute('data-testid') || '').toLowerCase();
+      const cls = (el.className || '').toString().toLowerCase();
+
+      if (testId === 'user-message' || cls.includes('font-user-message') || (el.closest && el.closest('[data-testid="user-message"]'))) {
+        return 'user';
+      }
+      if (testId === 'assistant-message' || cls.includes('font-claude-message') || cls.includes('font-claude') || (el.closest && el.closest('[data-testid="assistant-message"]'))) {
+        return 'assistant';
+      }
+      if (testId.includes('user') || cls.includes('user')) return 'user';
+      if (testId.includes('assistant') || cls.includes('claude') || cls.includes('assistant')) return 'assistant';
+      return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
+    },
+    extract() {
+      console.log(`[ContextBridge] Starting Claude conversation detection on: "${window.location.hostname}"`);
+      const selectorCounts = {};
+      this.selectors.candidateSelectors.forEach(sel => {
+        try {
+          const found = document.querySelectorAll(sel);
+          const valid = Array.from(found).filter(el => !el.closest('#contextbridge-overlay-root'));
+          selectorCounts[sel] = valid.length;
+        } catch (err) {
+          selectorCounts[sel] = 0;
+        }
+        console.log(`[ContextBridge] Selector "${sel}" found ${selectorCounts[sel]} element(s)`);
+      });
+
+      let extractedMessages = [];
+      let extractionMethod = null;
+
+      // Strategy 1: Prioritize explicit message test IDs & typography markers
+      const messageNodes = Array.from(
+        document.querySelectorAll('[data-testid="user-message"], [data-testid="assistant-message"], .font-user-message, .font-claude-message, [class*="font-claude-message"]')
+      ).filter(el => !el.closest('#contextbridge-overlay-root'));
+
+      if (messageNodes.length > 0) {
+        const deduped = messageNodes.filter(el => !messageNodes.some(other => other !== el && other.contains(el)));
+        const sortedNodes = CommonExtractorUtils.sortElementsInDocumentOrder(deduped);
+        const seenTexts = new Set();
+
+        sortedNodes.forEach((node, idx) => {
+          const role = this.resolveRole(node, idx);
+          const text = CommonExtractorUtils.extractCleanMessageText(node, this.selectors.ignoreElements);
+          if (CommonExtractorUtils.isMeaningfulContent(text, ['Claude is AI and can make mistakes']) && !seenTexts.has(text)) {
+            seenTexts.add(text);
+            extractedMessages.push({
+              id: `msg-${extractedMessages.length + 1}`,
+              role: role,
+              content: text
+            });
+          }
+        });
+
+        if (extractedMessages.length > 0) {
+          extractionMethod = 'Claude TestIDs & Typography Markers';
+        }
+      }
+
+      // Strategy 2: Turn containers fallback
+      if (extractedMessages.length === 0) {
+        const turnNodes = Array.from(document.querySelectorAll('[data-testid="conversation-turn"], [data-testid="chat-message-content"], main .grid'))
+          .filter(el => !el.closest('#contextbridge-overlay-root'))
+          .filter(el => !el.closest('header, nav, aside, form'));
+
+        if (turnNodes.length > 0) {
+          const deduped = turnNodes.filter(el => !turnNodes.some(other => other !== el && other.contains(el)));
+          const sortedTurns = CommonExtractorUtils.sortElementsInDocumentOrder(deduped);
+          const seenTexts = new Set();
+
+          sortedTurns.forEach((turn, idx) => {
+            const role = this.resolveRole(turn, idx);
+            const text = CommonExtractorUtils.extractCleanMessageText(turn, this.selectors.ignoreElements);
+            if (CommonExtractorUtils.isMeaningfulContent(text) && !seenTexts.has(text)) {
+              seenTexts.add(text);
+              extractedMessages.push({
+                id: `msg-${extractedMessages.length + 1}`,
+                role: role,
+                content: text
+              });
+            }
+          });
+
+          if (extractedMessages.length > 0) {
+            extractionMethod = 'Claude Conversation Turn Fallback';
+          }
+        }
+      }
+
+      if (extractedMessages.length > 0) {
+        console.log(`[ContextBridge] Conversation extraction SUCCEEDED via ${extractionMethod}.`);
+        console.log(`[ContextBridge] Extracted ${extractedMessages.length} valid conversation turns (${Math.ceil(extractedMessages.length / 2)} conversational exchanges).`);
+      } else {
+        console.log(`[ContextBridge] Conversation extraction FAILED: No valid Claude conversation elements found.`);
+      }
+
+      const pageTitle = CommonExtractorUtils.cleanPageTitle(document.title, 'Claude');
+      return {
+        platform: 'claude',
+        platformName: 'Claude',
+        detected: extractedMessages.length > 0,
+        pageTitle: pageTitle,
+        url: window.location.href,
+        capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        messages: extractedMessages,
+        messageCount: extractedMessages.length,
+        turnCount: Math.ceil(extractedMessages.length / 2),
+        isPartial: true,
+        sourceNotice: 'ContextBridge captured the conversation currently loaded on this page.'
+      };
+    }
+  };
+
+  // 4. Perplexity Extractor
+  const perplexityExtractor = {
+    id: 'perplexity',
+    name: 'Perplexity',
+    hostnames: ['perplexity.ai'],
+    matches(h) {
+      return this.hostnames.some(d => h === d || h.endsWith('.' + d));
+    },
+    selectors: {
+      candidateSelectors: [
+        '[data-testid="user-query"], [id^="markdown-content-"]',
+        'h1[class*="query"], div[class*="query"], div.prose',
+        'main .font-display, main [class*="answer"]'
+      ],
+      ignoreElements: [
+        'button', 'svg', '.sr-only', '[aria-hidden="true"]',
+        '[class*="citation"]', '[class*="source"]', 'a[href^="http"]',
+        '[data-testid*="follow-up"]', '[aria-label*="Copy" i]',
         '#contextbridge-overlay-root'
       ]
+    },
+    resolveRole(el, fallbackIndex = 0) {
+      if (!el) return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
+      const testId = (el.getAttribute('data-testid') || '').toLowerCase();
+      const id = (el.id || '').toLowerCase();
+      const tag = (el.tagName || '').toLowerCase();
+      const cls = (el.className || '').toString().toLowerCase();
+
+      if (testId.includes('user') || tag === 'h1' || cls.includes('query')) {
+        return 'user';
+      }
+      if (id.startsWith('markdown-content') || cls.includes('prose') || cls.includes('answer')) {
+        return 'assistant';
+      }
+      return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
+    },
+    extract() {
+      console.log(`[ContextBridge] Starting Perplexity conversation detection on: "${window.location.hostname}"`);
+      const targetSelector = '[data-testid="user-query"], [id^="markdown-content-"], h1[class*="query"], h1.font-display, main div.prose, main div[class*="prose"]';
+      const rawNodes = Array.from(document.querySelectorAll(targetSelector))
+        .filter(el => !el.closest('#contextbridge-overlay-root'))
+        .filter(el => !el.closest('header, nav, aside, form'));
+
+      let extractedMessages = [];
+      let extractionMethod = null;
+
+      if (rawNodes.length > 0) {
+        const deduped = rawNodes.filter(el => !rawNodes.some(other => other !== el && other.contains(el)));
+        const sortedNodes = CommonExtractorUtils.sortElementsInDocumentOrder(deduped);
+        const seenTexts = new Set();
+
+        sortedNodes.forEach((node, idx) => {
+          const role = this.resolveRole(node, idx);
+          const text = CommonExtractorUtils.extractCleanMessageText(node, this.selectors.ignoreElements);
+          if (CommonExtractorUtils.isMeaningfulContent(text, ['Ask follow-up', 'Perplexity']) && !seenTexts.has(text)) {
+            seenTexts.add(text);
+            extractedMessages.push({
+              id: `msg-${extractedMessages.length + 1}`,
+              role: role,
+              content: text
+            });
+          }
+        });
+
+        if (extractedMessages.length > 0) {
+          extractionMethod = 'Perplexity Query Headers & Markdown Blocks';
+        }
+      }
+
+      if (extractedMessages.length > 0) {
+        console.log(`[ContextBridge] Conversation extraction SUCCEEDED via ${extractionMethod}.`);
+        console.log(`[ContextBridge] Extracted ${extractedMessages.length} valid conversation turns.`);
+      } else {
+        console.log(`[ContextBridge] Conversation extraction FAILED: No valid Perplexity conversation elements found.`);
+      }
+
+      const pageTitle = CommonExtractorUtils.cleanPageTitle(document.title, 'Perplexity');
+      return {
+        platform: 'perplexity',
+        platformName: 'Perplexity',
+        detected: extractedMessages.length > 0,
+        pageTitle: pageTitle,
+        url: window.location.href,
+        capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        messages: extractedMessages,
+        messageCount: extractedMessages.length,
+        turnCount: Math.ceil(extractedMessages.length / 2),
+        isPartial: true,
+        sourceNotice: 'ContextBridge captured the conversation currently loaded on this page.'
+      };
+    }
+  };
+
+  // 5. Microsoft Copilot Extractor
+  const copilotExtractor = {
+    id: 'copilot',
+    name: 'Microsoft Copilot',
+    hostnames: ['copilot.microsoft.com', 'bing.com'],
+    matches(h, p = '') {
+      if (h === 'copilot.microsoft.com' || h.endsWith('.copilot.microsoft.com')) return true;
+      if (h === 'bing.com' || h.endsWith('.bing.com')) {
+        return p.startsWith('/chat') || p.startsWith('/copilot') || window.location.search.includes('q=Bing+AI');
+      }
+      return false;
+    },
+    selectors: {
+      candidateSelectors: [
+        'cib-chat-turn, cib-message-group',
+        'div[data-author="user"], div[data-author="bot"]',
+        '[data-testid="user-message"], [data-testid="bot-message"]',
+        'div[class*="message-container"]'
+      ],
+      ignoreElements: [
+        'button', 'svg', '.sr-only', '[aria-hidden="true"]',
+        '[class*="suggestion"]', '[class*="feedback"]', '#contextbridge-overlay-root'
+      ]
+    },
+    resolveRole(el, fallbackIndex = 0) {
+      if (!el) return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
+      const author = (el.getAttribute('data-author') || el.getAttribute('type') || '').toLowerCase();
+      const testId = (el.getAttribute('data-testid') || '').toLowerCase();
+      const cls = (el.className || '').toString().toLowerCase();
+
+      if (author === 'user' || testId.includes('user') || cls.includes('user')) return 'user';
+      if (author === 'bot' || author === 'assistant' || testId.includes('bot') || testId.includes('copilot') || cls.includes('bot')) return 'assistant';
+      return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
+    },
+    extract() {
+      console.log(`[ContextBridge] Starting Microsoft Copilot conversation detection on: "${window.location.hostname}"`);
+      const targetSelector = 'div[data-author="user"], div[data-author="bot"], [data-testid="user-message"], [data-testid="bot-message"], cib-chat-turn, div[class*="message-container"]';
+      const messageNodes = Array.from(document.querySelectorAll(targetSelector))
+        .filter(el => !el.closest('#contextbridge-overlay-root'))
+        .filter(el => !el.closest('header, nav, aside'));
+
+      let extractedMessages = [];
+      let extractionMethod = null;
+
+      if (messageNodes.length > 0) {
+        const deduped = messageNodes.filter(el => !messageNodes.some(other => other !== el && other.contains(el)));
+        const sortedNodes = CommonExtractorUtils.sortElementsInDocumentOrder(deduped);
+        const seenTexts = new Set();
+
+        sortedNodes.forEach((node, idx) => {
+          const role = this.resolveRole(node, idx);
+          const text = CommonExtractorUtils.extractCleanMessageText(node, this.selectors.ignoreElements);
+          if (CommonExtractorUtils.isMeaningfulContent(text, ['Copilot may make mistakes']) && !seenTexts.has(text)) {
+            seenTexts.add(text);
+            extractedMessages.push({
+              id: `msg-${extractedMessages.length + 1}`,
+              role: role,
+              content: text
+            });
+          }
+        });
+
+        if (extractedMessages.length > 0) {
+          extractionMethod = 'Copilot Message & Turn Elements';
+        }
+      }
+
+      if (extractedMessages.length > 0) {
+        console.log(`[ContextBridge] Conversation extraction SUCCEEDED via ${extractionMethod}.`);
+        console.log(`[ContextBridge] Extracted ${extractedMessages.length} valid conversation turns.`);
+      } else {
+        console.log(`[ContextBridge] Conversation extraction FAILED: No valid Copilot conversation elements found.`);
+      }
+
+      const pageTitle = CommonExtractorUtils.cleanPageTitle(document.title, 'Copilot');
+      return {
+        platform: 'copilot',
+        platformName: 'Microsoft Copilot',
+        detected: extractedMessages.length > 0,
+        pageTitle: pageTitle,
+        url: window.location.href,
+        capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        messages: extractedMessages,
+        messageCount: extractedMessages.length,
+        turnCount: Math.ceil(extractedMessages.length / 2),
+        isPartial: true,
+        sourceNotice: 'ContextBridge captured the conversation currently loaded on this page.'
+      };
+    }
+  };
+
+  // 6. Grok Extractor
+  const grokExtractor = {
+    id: 'grok',
+    name: 'Grok',
+    hostnames: ['grok.com', 'x.com', 'twitter.com'],
+    matches(h, p = '') {
+      if (h === 'grok.com' || h.endsWith('.grok.com')) return true;
+      if (h === 'x.com' || h.endsWith('.x.com') || h === 'twitter.com' || h.endsWith('.twitter.com')) {
+        return p.includes('/i/grok') || p.includes('/grok');
+      }
+      return false;
+    },
+    selectors: {
+      candidateSelectors: [
+        'div[class*="message-bubble"], .response-content-markdown',
+        'div[class*="user-message"], div[class*="response"]',
+        '[data-testid="grokMessage"], [data-testid="tweetText"]',
+        'main div.prose'
+      ],
+      ignoreElements: [
+        'button', 'svg', '.sr-only', '[aria-hidden="true"]',
+        '[data-testid*="sidebar"]', '[role="navigation"]', '[class*="thought"]',
+        '[aria-label*="Thought for" i]', '#contextbridge-overlay-root'
+      ]
+    },
+    resolveRole(el, fallbackIndex = 0) {
+      if (!el) return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
+      const cls = (el.className || '').toString().toLowerCase();
+      const testId = (el.getAttribute('data-testid') || '').toLowerCase();
+      const roleAttr = (el.getAttribute('data-role') || '').toLowerCase();
+
+      if (roleAttr === 'user' || cls.includes('user-message') || cls.includes('user') || testId.includes('user')) return 'user';
+      if (roleAttr === 'assistant' || cls.includes('response') || cls.includes('prose') || testId.includes('grok')) return 'assistant';
+      return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
+    },
+    extract() {
+      console.log(`[ContextBridge] Starting Grok conversation detection on: "${window.location.hostname}"`);
+      const targetSelector = 'div[class*="message-bubble"], .response-content-markdown, div[class*="user-message"], [data-testid="grokMessage"], main div.prose';
+      const messageNodes = Array.from(document.querySelectorAll(targetSelector))
+        .filter(el => !el.closest('#contextbridge-overlay-root'))
+        .filter(el => !el.closest('header, nav, aside, form, [data-testid*="sidebar"]'));
+
+      let extractedMessages = [];
+      let extractionMethod = null;
+
+      if (messageNodes.length > 0) {
+        const deduped = messageNodes.filter(el => !messageNodes.some(other => other !== el && other.contains(el)));
+        const sortedNodes = CommonExtractorUtils.sortElementsInDocumentOrder(deduped);
+        const seenTexts = new Set();
+
+        sortedNodes.forEach((node, idx) => {
+          const role = this.resolveRole(node, idx);
+          const text = CommonExtractorUtils.extractCleanMessageText(node, this.selectors.ignoreElements);
+          if (CommonExtractorUtils.isMeaningfulContent(text, ['Grok can make mistakes', 'Thought for']) && !seenTexts.has(text)) {
+            seenTexts.add(text);
+            extractedMessages.push({
+              id: `msg-${extractedMessages.length + 1}`,
+              role: role,
+              content: text
+            });
+          }
+        });
+
+        if (extractedMessages.length > 0) {
+          extractionMethod = 'Grok Message Bubbles & Markdown Responses';
+        }
+      }
+
+      if (extractedMessages.length > 0) {
+        console.log(`[ContextBridge] Conversation extraction SUCCEEDED via ${extractionMethod}.`);
+        console.log(`[ContextBridge] Extracted ${extractedMessages.length} valid conversation turns.`);
+      } else {
+        console.log(`[ContextBridge] Conversation extraction FAILED: No valid Grok conversation elements found.`);
+      }
+
+      const pageTitle = CommonExtractorUtils.cleanPageTitle(document.title, 'Grok');
+      return {
+        platform: 'grok',
+        platformName: 'Grok',
+        detected: extractedMessages.length > 0,
+        pageTitle: pageTitle,
+        url: window.location.href,
+        capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        messages: extractedMessages,
+        messageCount: extractedMessages.length,
+        turnCount: Math.ceil(extractedMessages.length / 2),
+        isPartial: true,
+        sourceNotice: 'ContextBridge captured the conversation currently loaded on this page.'
+      };
+    }
+  };
+
+  // Central Extractor Registry
+  const ContextBridgeRegistry = {
+    extractors: [
+      chatgptExtractor,
+      geminiExtractor,
+      claudeExtractor,
+      perplexityExtractor,
+      copilotExtractor,
+      grokExtractor
+    ],
+
+    register(extractor) {
+      if (!extractor || !extractor.id) return;
+      const idx = this.extractors.findIndex(e => e.id === extractor.id);
+      if (idx >= 0) this.extractors[idx] = extractor;
+      else this.extractors.push(extractor);
+    },
+
+    detectPlatform(hostname = window.location.hostname, pathname = window.location.pathname) {
+      const h = (hostname || '').toLowerCase().trim();
+      const p = (pathname || '').toLowerCase();
+      return this.extractors.find(e => e.matches(h, p)) || null;
+    },
+
+    extractActiveConversation() {
+      const hostname = window.location.hostname || '';
+      const pathname = window.location.pathname || '';
+      const activeExtractor = this.detectPlatform(hostname, pathname);
+
+      if (!activeExtractor) {
+        console.log(`[ContextBridge] Host "${hostname}" is not recognized as a supported AI platform.`);
+        return {
+          platform: 'unsupported',
+          platformName: 'Unsupported Platform',
+          detected: false,
+          pageTitle: (document.title || '').trim() || 'Manual Context Session',
+          url: window.location.href,
+          capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          messages: [],
+          messageCount: 0,
+          turnCount: 0,
+          isPartial: false,
+          sourceNotice: `ContextBridge is active on "${hostname}". This AI platform is not currently supported. Manual context mode enabled.`
+        };
+      }
+
+      console.log(`[ContextBridge] Detected AI Platform: ${activeExtractor.name} (${activeExtractor.id}) on ${hostname}`);
+
+      try {
+        const rawResult = activeExtractor.extract();
+        const normalized = (rawResult.messages || []).map((m, i) => ({
+          id: m.id || `msg-${i + 1}`,
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: (m.content || '').trim()
+        })).filter(m => m.content.length > 0);
+
+        return {
+          platform: activeExtractor.id,
+          platformName: activeExtractor.name,
+          detected: normalized.length > 0,
+          pageTitle: rawResult.pageTitle || (document.title || '').trim() || `${activeExtractor.name} Session`,
+          url: window.location.href,
+          capturedAt: rawResult.capturedAt || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          messages: normalized,
+          messageCount: normalized.length,
+          turnCount: Math.ceil(normalized.length / 2),
+          isPartial: true,
+          sourceNotice: rawResult.sourceNotice || `ContextBridge captured the conversation currently loaded on ${activeExtractor.name}.`
+        };
+      } catch (err) {
+        console.error(`[ContextBridge] Extraction error on ${activeExtractor.name}:`, err);
+        return {
+          platform: activeExtractor.id,
+          platformName: activeExtractor.name,
+          detected: false,
+          pageTitle: (document.title || '').trim() || `${activeExtractor.name} Session`,
+          url: window.location.href,
+          capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          messages: [],
+          messageCount: 0,
+          turnCount: 0,
+          isPartial: false,
+          sourceNotice: `Error reading conversation from ${activeExtractor.name}. Manual context mode enabled.`
+        };
+      }
     }
   };
 
@@ -72,330 +989,23 @@
   let capturedConversation = null;
   let showManualReview = false;
 
-  /**
-   * Detect current host platform
-   */
-  function detectPlatform() {
-    const host = (window.location.hostname || '').toLowerCase().trim();
-    const isChatGPT = CHATGPT_CONFIG.hostnames.some(domain => host === domain || host.endsWith('.' + domain));
-    return isChatGPT ? 'chatgpt' : 'unsupported';
-  }
-
-  /**
-   * Check if extracted text represents meaningful conversation content
-   */
-  function isMeaningfulContent(text) {
-    if (!text || typeof text !== 'string') return false;
-    const clean = text.trim();
-    if (clean.length < 2) return false;
-
-    // Disregard standard ChatGPT UI boilerplate lines when alone
-    const boilerplate = [
-      'ChatGPT can make mistakes. Check important info.',
-      'Search the web',
-      'Message ChatGPT',
-      'ChatGPT',
-      'Copy code'
-    ];
-    if (boilerplate.some(b => clean.toLowerCase() === b.toLowerCase())) {
-      return false;
-    }
-    return true;
-  }
-
-  /**
-   * Cleanly extract message text while preserving code blocks, lists, and paragraphs
-   */
-  function extractCleanMessageText(node) {
-    if (!node) return '';
-
-    // Clone node so live webpage DOM is never mutated
-    const clone = node.cloneNode(true);
-
-    // Remove buttons, action rows, icons, and screen reader text
-    CHATGPT_CONFIG.selectors.ignoreElements.forEach(selector => {
-      try {
-        const matches = clone.querySelectorAll(selector);
-        matches.forEach(el => el.remove());
-      } catch (e) {
-        // Silently skip any invalid selector edge cases
-      }
-    });
-
-    // Handle code blocks (<pre>): format nicely with markdown code fences
-    try {
-      const codeBlocks = clone.querySelectorAll('pre');
-      codeBlocks.forEach(pre => {
-        let lang = '';
-        const codeEl = pre.querySelector('code');
-        if (codeEl) {
-          const match = (codeEl.className || '').match(/language-([a-zA-Z0-9_\-#+]+)/);
-          if (match) lang = match[1];
-        }
-        const codeText = (codeEl ? codeEl.textContent : pre.textContent) || '';
-        const replacement = document.createTextNode(`\n\n\`\`\`${lang}\n${codeText.trim()}\n\`\`\`\n\n`);
-        if (pre.parentNode) {
-          pre.parentNode.replaceChild(replacement, pre);
-        }
-      });
-    } catch (e) {
-      // Continue even if code block transformation encounters unexpected nodes
-    }
-
-    // Extract text using innerText (preserves linebreaks and paragraph spacing)
-    // with fallback to textContent
-    let text = clone.innerText !== undefined ? clone.innerText : clone.textContent || '';
-
-    // Normalize excess blank lines (max 2 consecutive newlines) and trim
-    text = text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-
-    return text;
-  }
-
-  /**
-   * Resolve user vs assistant role for a candidate element
-   */
-  function resolveRoleForElement(el, fallbackIndex = 0) {
-    if (!el) return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
-
-    // 1. Direct role attribute on element or descendant
-    if (el.hasAttribute && el.hasAttribute(CHATGPT_CONFIG.selectors.roleAttribute)) {
-      const attr = (el.getAttribute(CHATGPT_CONFIG.selectors.roleAttribute) || '').toLowerCase();
-      if (attr === 'assistant') return 'assistant';
-      if (attr === 'user') return 'user';
-    }
-    const roleChild = el.querySelector ? el.querySelector(`[${CHATGPT_CONFIG.selectors.roleAttribute}]`) : null;
-    if (roleChild) {
-      const attr = (roleChild.getAttribute(CHATGPT_CONFIG.selectors.roleAttribute) || '').toLowerCase();
-      if (attr === 'assistant') return 'assistant';
-      if (attr === 'user') return 'user';
-    }
-
-    // 2. Class / content markers
-    if (el.querySelector) {
-      if (el.querySelector('.markdown') || el.querySelector('[data-testid="agent-turn"]') || (el.classList && el.classList.contains('agent-turn'))) {
-        return 'assistant';
-      }
-      if (el.querySelector('[class*="user-message"]') || el.querySelector('.whitespace-pre-wrap')) {
-        return 'user';
-      }
-    }
-
-    // 3. Positional fallback
-    return fallbackIndex % 2 === 0 ? 'user' : 'assistant';
-  }
-
-  /**
-   * Sort elements by natural document position to preserve chronological order
-   */
-  function sortElementsInDocumentOrder(elements) {
-    return Array.from(elements).sort((a, b) => {
-      if (a === b) return 0;
-      const position = a.compareDocumentPosition(b);
-      if (position & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
-      if (position & Node.DOCUMENT_POSITION_PRECEDING) return 1;
-      return 0;
-    });
-  }
-
-  /**
-   * Extract conversation messages from the active ChatGPT DOM
-   * Evaluates multiple selectors, prioritizes role attributes, and provides robust fallback
-   */
-  function extractChatGPTConversation() {
-    const platform = detectPlatform();
-    console.log(`[ContextBridge] Starting ChatGPT conversation detection on: "${window.location.hostname}" (detected platform: "${platform}")`);
-
-    if (platform !== 'chatgpt') {
-      console.log(`[ContextBridge] Conversation detection skipped: host "${window.location.hostname}" is not recognized as ChatGPT.`);
-      return {
-        platform: 'unsupported',
-        detected: false,
-        messages: [],
-        messageCount: 0,
-        turnCount: 0,
-        isPartial: false,
-        sourceNotice: 'ContextBridge is active on an unsupported website. Manual context mode enabled.'
-      };
-    }
-
-    // 1. Collect and log results from multiple candidate selectors
-    const selectorCounts = {};
-    CHATGPT_CONFIG.selectors.candidateSelectors.forEach(sel => {
-      try {
-        const found = document.querySelectorAll(sel);
-        // Exclude elements inside our own overlay
-        const valid = Array.from(found).filter(el => !el.closest('#contextbridge-overlay-root'));
-        selectorCounts[sel] = valid.length;
-      } catch (err) {
-        selectorCounts[sel] = 0;
-      }
-      console.log(`[ContextBridge] Selector "${sel}" found ${selectorCounts[sel]} element(s)`);
-    });
-
-    let extractedMessages = [];
-    let extractionMethod = null;
-
-    // 2. Strategy 1: Prioritize role-based detection ([data-message-author-role])
-    // Elements with data-message-author-role="user" or "assistant" are the most reliable
-    const roleNodes = Array.from(
-      document.querySelectorAll('[data-message-author-role="user"], [data-message-author-role="assistant"], [data-message-author-role]')
-    ).filter(el => !el.closest('#contextbridge-overlay-root'));
-
-    if (roleNodes.length > 0) {
-      const sortedRoleNodes = sortElementsInDocumentOrder(roleNodes);
-      const seenTexts = new Set();
-
-      sortedRoleNodes.forEach((node, idx) => {
-        const role = resolveRoleForElement(node, idx);
-        const text = extractCleanMessageText(node);
-        if (isMeaningfulContent(text) && !seenTexts.has(text)) {
-          seenTexts.add(text);
-          extractedMessages.push({
-            id: `msg-${extractedMessages.length + 1}`,
-            role: role,
-            content: text
-          });
-        }
-      });
-
-      if (extractedMessages.length > 0) {
-        extractionMethod = 'Role-based ([data-message-author-role])';
-      }
-    }
-
-    // 3. Strategy 2: If role-based extraction yielded no valid messages, evaluate turn containers
-    if (extractedMessages.length === 0) {
-      const turnSelector = 'article[data-testid^="conversation-turn-"], div[data-testid^="conversation-turn-"], [data-testid^="conversation-turn-"], main article';
-      const rawTurnNodes = Array.from(document.querySelectorAll(turnSelector))
-        .filter(el => !el.closest('#contextbridge-overlay-root'));
-
-      if (rawTurnNodes.length > 0) {
-        // Deduplicate nested elements (e.g. if both parent article and inner div matched)
-        const dedupedTurns = rawTurnNodes.filter(el => {
-          return !rawTurnNodes.some(other => other !== el && other.contains(el));
-        });
-
-        const sortedTurns = sortElementsInDocumentOrder(dedupedTurns);
-        const seenTexts = new Set();
-
-        sortedTurns.forEach((turn, idx) => {
-          const role = resolveRoleForElement(turn, idx);
-
-          // For container turns, prefer child markdown / message wrapper if present
-          let contentNode = turn;
-          if (role === 'assistant') {
-            const md = turn.querySelector('.markdown') || turn.querySelector('[class*="prose"]');
-            if (md) contentNode = md;
-          } else {
-            const userBox = turn.querySelector('.whitespace-pre-wrap') || turn.querySelector('[class*="user-message"]');
-            if (userBox) contentNode = userBox;
-          }
-
-          const text = extractCleanMessageText(contentNode);
-          if (isMeaningfulContent(text) && !seenTexts.has(text)) {
-            seenTexts.add(text);
-            extractedMessages.push({
-              id: `msg-${extractedMessages.length + 1}`,
-              role: role,
-              content: text
-            });
-          }
-        });
-
-        if (extractedMessages.length > 0) {
-          extractionMethod = 'Turn Containers (articles / testids)';
-        }
-      }
-    }
-
-    // 4. Strategy 3: Robust fallback inside the main chat area
-    // If primary selectors failed, look inside main or [role="main"] for conversation messages
-    if (extractedMessages.length === 0) {
-      const mainChatArea = document.querySelector('main') || document.querySelector('[role="main"]');
-      if (mainChatArea) {
-        // Query potential message wrappers inside main (markdown containers and whitespace containers)
-        const candidateBlocks = Array.from(
-          mainChatArea.querySelectorAll('.markdown, [class*="markdown"], .whitespace-pre-wrap, [class*="user-message"], [class*="agent-turn"]')
-        ).filter(el => {
-          if (el.closest('#contextbridge-overlay-root')) return false;
-          if (el.closest('header, nav, aside, form, footer, [role="navigation"]')) return false;
-          return true;
-        });
-
-        // Deduplicate child/parent containers
-        const dedupedBlocks = candidateBlocks.filter(el => {
-          return !candidateBlocks.some(other => other !== el && other.contains(el));
-        });
-
-        const sortedBlocks = sortElementsInDocumentOrder(dedupedBlocks);
-        const seenTexts = new Set();
-
-        sortedBlocks.forEach((block, idx) => {
-          const role = resolveRoleForElement(block, idx);
-          const text = extractCleanMessageText(block);
-          if (isMeaningfulContent(text) && !seenTexts.has(text)) {
-            seenTexts.add(text);
-            extractedMessages.push({
-              id: `msg-${extractedMessages.length + 1}`,
-              role: role,
-              content: text
-            });
-          }
-        });
-
-        if (extractedMessages.length > 0) {
-          extractionMethod = 'Main Chat Area Fallback (prose & text containers)';
-        }
-      }
-    }
-
-    // 5. Final Diagnostic Logging
-    if (extractedMessages.length > 0) {
-      console.log(`[ContextBridge] Conversation extraction SUCCEEDED via ${extractionMethod}.`);
-      console.log(`[ContextBridge] Extracted ${extractedMessages.length} valid conversation turns (${Math.ceil(extractedMessages.length / 2)} conversational exchanges).`);
-    } else {
-      let failReason = 'No valid conversation elements found.';
-      const totalElementsFound = Object.values(selectorCounts).reduce((a, b) => a + b, 0);
-      if (totalElementsFound === 0) {
-        failReason = 'None of the conversation turn selectors matched elements in the DOM. The page may still be loading, or you might be on an empty/new chat screen.';
-      } else {
-        failReason = `${totalElementsFound} element(s) were matched by selectors, but none contained valid, meaningful text (elements were empty wrappers, skeletons, or UI chrome).`;
-      }
-      console.log(`[ContextBridge] Conversation extraction FAILED: ${failReason}`);
-    }
-
-    const pageTitle = (document.title || '')
-      .replace(/\s*[-–|]\s*ChatGPT.*$/i, '')
-      .replace(/^ChatGPT\s*[-–|]\s*/i, '')
-      .trim() || 'Active ChatGPT Session';
-
-    return {
-      platform: 'chatgpt',
-      detected: extractedMessages.length > 0,
-      pageTitle: pageTitle,
-      url: window.location.href,
-      capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      messages: extractedMessages,
-      messageCount: extractedMessages.length,
-      turnCount: Math.ceil(extractedMessages.length / 2),
-      isPartial: true,
-      sourceNotice: 'ContextBridge captured the conversation currently loaded on this page.'
-    };
-  }
-
   function detectAndReadActiveConversation(silent = false) {
-    capturedConversation = extractChatGPTConversation();
+    capturedConversation = ContextBridgeRegistry.extractActiveConversation();
     if (capturedConversation && capturedConversation.detected) {
       if (!state.projectName && capturedConversation.pageTitle) {
         state.projectName = capturedConversation.pageTitle;
       }
       if (!silent) {
-        showToast(`ChatGPT detected • ${capturedConversation.messageCount} messages captured`);
+        showToast(`${capturedConversation.platformName} detected • ${capturedConversation.messageCount} messages captured`);
       }
     } else {
       if (!silent) {
-        showToast('No active conversation detected');
+        const activeExt = ContextBridgeRegistry.detectPlatform();
+        if (activeExt) {
+          showToast(`No active ${activeExt.name} conversation detected`);
+        } else {
+          showToast('This AI platform is not currently supported');
+        }
       }
     }
   }
@@ -664,6 +1274,9 @@
    */
   function renderCaptureView(container) {
     const hasCaptured = capturedConversation && capturedConversation.detected && capturedConversation.messages.length > 0;
+    const activePlatform = ContextBridgeRegistry.detectPlatform();
+    const isPlatformSupported = !!activePlatform;
+    const detectedPlatformName = capturedConversation?.platformName || activePlatform?.name || 'AI';
 
     let leftColumnHtml = '';
 
@@ -672,11 +1285,11 @@
       const messagesHtml = capturedConversation.messages.map((msg) => {
         const isUser = msg.role === 'user';
         const roleClass = isUser ? 'cb-role-tag-user' : 'cb-role-tag-assistant';
-        const roleLabel = isUser ? 'USER' : 'CHATGPT';
+        const roleLabel = isUser ? 'USER' : (capturedConversation.platformName ? capturedConversation.platformName.toUpperCase() : 'AI');
         return `
           <div class="cb-chat-msg-row">
             <div class="cb-msg-header">
-              <span class="cb-role-tag ${roleClass}">${roleLabel}</span>
+              <span class="cb-role-tag ${roleClass}">${escapeHtml(roleLabel)}</span>
             </div>
             <div class="cb-msg-content-preview">${escapeHtml(msg.content)}</div>
           </div>
@@ -689,7 +1302,7 @@
           <div class="cb-capture-status-bar">
             <div class="cb-status-left">
               <span class="cb-pulse-dot"></span>
-              <span class="cb-status-title">ChatGPT conversation detected</span>
+              <span class="cb-status-title">${escapeHtml(detectedPlatformName)} conversation detected</span>
               <span class="cb-status-counter">${capturedConversation.messageCount} messages (${capturedConversation.turnCount} turns)</span>
             </div>
             <button type="button" class="cb-refresh-btn" id="cb-refresh-chat-btn" title="Re-read currently loaded messages from the webpage">
@@ -707,7 +1320,7 @@
               <line x1="12" y1="16" x2="12" y2="12"></line>
               <line x1="12" y1="8" x2="12.01" y2="8"></line>
             </svg>
-            <span>ContextBridge captured the conversation currently loaded on this page.</span>
+            <span>${escapeHtml(capturedConversation.sourceNotice || `ContextBridge captured the conversation currently loaded on ${detectedPlatformName}.`)}</span>
           </div>
 
           <!-- Captured Conversation Stream Card -->
@@ -775,15 +1388,20 @@
         </div>
       `;
     } else {
-      // Manual fallback view (unsupported website or no ChatGPT messages)
+      // Manual fallback view (unsupported website or no messages found)
+      const statusTitle = isPlatformSupported ? 'Manual Context Mode' : 'Unsupported AI Platform';
+      const statusSubtitle = isPlatformSupported
+        ? `No active ${escapeHtml(activePlatform.name)} conversation detected on this page`
+        : `This AI platform is not currently supported (${escapeHtml(window.location.hostname || 'unknown domain')})`;
+
       leftColumnHtml = `
         <div class="cb-capture-column">
           <!-- Status Banner: Manual Mode -->
           <div class="cb-capture-status-bar">
             <div class="cb-status-left">
               <span class="cb-status-dot-gray"></span>
-              <span class="cb-status-title">Manual Context Mode</span>
-              <span class="cb-status-subtitle">No active ChatGPT conversation detected on this page</span>
+              <span class="cb-status-title">${escapeHtml(statusTitle)}</span>
+              <span class="cb-status-subtitle">${escapeHtml(statusSubtitle)}</span>
             </div>
             <button type="button" class="cb-refresh-btn" id="cb-refresh-chat-btn" title="Scan webpage again for conversation">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -792,6 +1410,19 @@
               <span>Scan Page</span>
             </button>
           </div>
+
+          ${!isPlatformSupported ? `
+            <div class="cb-honesty-note" style="border-color: rgba(239, 68, 68, 0.25); background: rgba(239, 68, 68, 0.05); margin-bottom: 0.75rem;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <span style="color: var(--cb-text-secondary); font-size: 0.7rem;">
+                Supported platforms: <strong>ChatGPT, Google Gemini, Claude, Perplexity, Microsoft Copilot, and Grok</strong>. You can manually enter context below.
+              </span>
+            </div>
+          ` : ''}
 
           <!-- Project Name Input Bar -->
           <div class="cb-project-bar">
@@ -1320,8 +1951,9 @@
   function formatData(data, format = 'standard') {
     // Primary source: If an automatically captured conversation exists, format it directly!
     if (capturedConversation && capturedConversation.detected && capturedConversation.messages.length > 0) {
-      const title = (data.projectName || capturedConversation.pageTitle || 'ChatGPT Conversation Session').trim();
-      const notice = capturedConversation.sourceNotice || 'ContextBridge captured the conversation currently loaded on this page.';
+      const platformName = capturedConversation.platformName || (capturedConversation.platform === 'gemini' ? 'Google Gemini' : capturedConversation.platform === 'claude' ? 'Claude' : capturedConversation.platform === 'perplexity' ? 'Perplexity' : capturedConversation.platform === 'copilot' ? 'Microsoft Copilot' : capturedConversation.platform === 'grok' ? 'Grok' : 'ChatGPT');
+      const title = (data.projectName || capturedConversation.pageTitle || `${platformName} Conversation Session`).trim();
+      const notice = capturedConversation.sourceNotice || `ContextBridge captured the conversation currently loaded on ${platformName}.`;
       const msgCount = capturedConversation.messages.length;
 
       const hasManualSupplements = (data.currentTask && data.currentTask.trim()) ||
@@ -1332,7 +1964,7 @@
       switch (format) {
         case 'markdown': {
           const turnsMd = capturedConversation.messages.map((m) => {
-            const roleLabel = m.role === 'user' ? 'User' : 'Assistant (ChatGPT)';
+            const roleLabel = m.role === 'user' ? 'User' : `Assistant (${platformName})`;
             return `### ${roleLabel}\n${m.content.trim()}`;
           }).join('\n\n');
 
@@ -1346,7 +1978,7 @@
           }
 
           return `# ContextBridge: ${title}
-*Source: ChatGPT • ${msgCount} messages captured*
+*Source: ${platformName} • ${msgCount} messages captured*
 
 > **Notice:** ${notice}
 
@@ -1369,7 +2001,7 @@ ${turnsMd}${suppMd}`;
               `  </supplements>`;
           }
 
-          return `<context_bridge source="chatgpt" messages="${msgCount}">
+          return `<context_bridge source="${capturedConversation.platform}" platform="${escapeXml(platformName)}" messages="${msgCount}">
   <meta>
     <project>${escapeXml(title)}</project>
     <notice>${escapeXml(notice)}</notice>
@@ -1386,15 +2018,15 @@ ${turnsXml}
             .map((m) => `${m.role.toUpperCase()}: ${m.content.replace(/\s+/g, ' ').slice(0, 120)}...`)
             .join(' | ');
           const nextPart = data.nextSteps ? ` | NEXT: ${data.nextSteps.replace(/\s+/g, ' ')}` : '';
-          return `[CONTEXTBRIDGE: CHATGPT (${msgCount} msgs)] ${title} | NOTICE: ${notice} | ${snippet}${nextPart}`;
+          return `[CONTEXTBRIDGE: ${platformName.toUpperCase()} (${msgCount} msgs)] ${title} | NOTICE: ${notice} | ${snippet}${nextPart}`;
         }
 
         case 'standard':
         default: {
-          const metaHeader = `[SYSTEM CONTEXT: The user is transferring their active working context from ChatGPT. Review the captured conversation transcript below and continue the task directly without asking the user to re-explain.]\n\n`;
+          const metaHeader = `[SYSTEM CONTEXT: The user is transferring their active working context from ${platformName}. Review the captured conversation transcript below and continue the task directly without asking the user to re-explain.]\n\n`;
 
           const transcript = capturedConversation.messages.map((m) => {
-            const roleLabel = m.role === 'user' ? '[USER]' : '[ASSISTANT (CHATGPT)]';
+            const roleLabel = m.role === 'user' ? '[USER]' : `[ASSISTANT (${platformName.toUpperCase()})]`;
             return `${roleLabel}:\n${m.content.trim()}`;
           }).join('\n\n');
 
@@ -1408,13 +2040,12 @@ ${turnsXml}
           }
 
           return `${metaHeader}PROJECT: ${title}
-SOURCE: ChatGPT (Auto-Captured)
+SOURCE: ${platformName} (Auto-Captured)
 MESSAGES CAPTURED: ${msgCount}
 STATUS: ${notice}
 
 CONVERSATION TRANSCRIPT:
-----------------------------------------
-${transcript}${suppText}`;
+----------------------------------------\n${transcript}${suppText}`;
         }
       }
     }

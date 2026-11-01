@@ -5,8 +5,11 @@ export interface ConversationMessage {
   timestamp?: string;
 }
 
+export type SupportedPlatform = 'chatgpt' | 'gemini' | 'claude' | 'perplexity' | 'copilot' | 'grok' | 'unsupported';
+
 export interface CapturedConversation {
-  platform: 'chatgpt' | 'unsupported';
+  platform: SupportedPlatform;
+  platformName?: string;
   detected: boolean;
   pageTitle?: string;
   url?: string;
@@ -16,6 +19,7 @@ export interface CapturedConversation {
   turnCount: number;
   isPartial: boolean;
   sourceNotice?: string;
+  errorReason?: string;
 }
 
 export interface ContextItem {

@@ -72,6 +72,96 @@ const CHATGPT_LONG_CONVERSATION: ConversationMessage[] = [
   }
 ];
 
+// Realistic Google Gemini conversation mock
+const GEMINI_CONVERSATION: ConversationMessage[] = [
+  {
+    id: 'msg-1',
+    role: 'user',
+    content: "How should I structure a real-time event pipeline using Cloud Pub/Sub and BigQuery streaming inserts in Go?"
+  },
+  {
+    id: 'msg-2',
+    role: 'assistant',
+    content: "To structure an event streaming pipeline in Go with Cloud Pub/Sub and BigQuery:\n1. Use the `cloud.google.com/go/pubsub` client with dedicated subscription receivers.\n2. Leverage BigQuery Storage Write API (`managedwriter.Client`) with DefaultStream for sub-second append throughput.\n3. Buffer rows in memory using Go worker pools and flush either every 500ms or 1,000 records.\n4. Route schema parsing failures directly to a dead-letter Pub/Sub topic."
+  },
+  {
+    id: 'msg-3',
+    role: 'user',
+    content: "Can you provide the managedwriter Go code with Proto2/Proto3 descriptor schema registration?"
+  },
+  {
+    id: 'msg-4',
+    role: 'assistant',
+    content: "Here is the BigQuery ManagedWriter pipeline snippet:\n```go\nfunc NewEventWriter(ctx context.Context, project, dataset, table string) (*managedwriter.Client, error) {\n    client, err := managedwriter.NewClient(ctx, project)\n    if err != nil { return nil, err }\n    // Wire managed write stream with automatic connection reconnect\n    return client, nil\n}\n```\nEnsure write permission `roles/bigquery.dataEditor` is granted to the Google Service Account."
+  }
+];
+
+// Realistic Claude conversation mock
+const CLAUDE_CONVERSATION: ConversationMessage[] = [
+  {
+    id: 'msg-1',
+    role: 'user',
+    content: "I'm refactoring an enterprise React application to use TanStack Query v5 with optimistic updates and rollback on network errors. Can you review this pattern?"
+  },
+  {
+    id: 'msg-2',
+    role: 'assistant',
+    content: "Here is the resilient optimistic update pattern for TanStack Query v5:\n1. Cancel outgoing queries via `queryClient.cancelQueries({ queryKey })`.\n2. Snapshot previous cache state using `queryClient.getQueryData(queryKey)`.\n3. Optimistically set the new value in the cache.\n4. In `onError`, rollback the cache using the snapshot.\n5. In `onSettled`, always invalidate the query to ensure eventual consistency with the server."
+  },
+  {
+    id: 'msg-3',
+    role: 'user',
+    content: "How do we handle concurrent mutations when multiple user inputs fire in rapid succession without race conditions?"
+  },
+  {
+    id: 'msg-4',
+    role: 'assistant',
+    content: "For rapid concurrent mutations, use `scope.id` inside mutation keys or assign an idempotent monotonic timestamp to each mutation context so that stale rollbacks never overwrite newer optimistically applied values."
+  }
+];
+
+// Realistic Perplexity conversation mock
+const PERPLEXITY_CONVERSATION: ConversationMessage[] = [
+  {
+    id: 'msg-1',
+    role: 'user',
+    content: "What are the latest best practices for zero-copy memory serialization in Apache Arrow vs Protobuf in 2026?"
+  },
+  {
+    id: 'msg-2',
+    role: 'assistant',
+    content: "Based on current benchmarks and system designs:\n1. **Apache Arrow** offers true zero-copy in-memory IPC using columnar layout with bitmap validity masks, excelling for analytical vector math and DataFrames.\n2. **Protobuf (v3/v4)** requires deserialization allocation overhead into language-specific struct fields, but excels for small RPC payloads with complex nested hierarchies.\n**Recommendation:** Use Apache Arrow Flight for large tabular data transfer and gRPC Protobuf for lightweight control-plane RPCs."
+  }
+];
+
+// Realistic Copilot conversation mock
+const COPILOT_CONVERSATION: ConversationMessage[] = [
+  {
+    id: 'msg-1',
+    role: 'user',
+    content: "Write a GitHub Actions workflow to build, test, and publish a multi-arch Docker image using Buildx and GitHub Container Registry (GHCR)."
+  },
+  {
+    id: 'msg-2',
+    role: 'assistant',
+    content: "Here is the GitHub Actions workflow for multi-arch Docker builds:\n```yaml\nname: Build & Push Image\non: [push]\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: docker/setup-qemu-action@v3\n      - uses: docker/setup-buildx-action@v3\n      - uses: docker/login-action@v3\n        with:\n          registry: ghcr.io\n          username: ${{ github.actor }}\n          password: ${{ secrets.GITHUB_TOKEN }}\n      - uses: docker/build-push-action@v6\n        with:\n          platforms: linux/amd64,linux/arm64\n          push: true\n          tags: ghcr.io/${{ github.repository }}:latest\n```"
+  }
+];
+
+// Realistic Grok conversation mock
+const GROK_CONVERSATION: ConversationMessage[] = [
+  {
+    id: 'msg-1',
+    role: 'user',
+    content: "How would you design a distributed lock service without ZooKeeper using Raft and NVMe SSDs?"
+  },
+  {
+    id: 'msg-2',
+    role: 'assistant',
+    content: "To build a high-performance distributed lock manager without ZooKeeper:\n1. Run an embedded Raft consensus group (e.g., hashicorp/raft or tikv/raft-rs) across 3 or 5 nodes.\n2. Store active lock leases in an in-memory lock table backed by an append-only Raft WAL on NVMe.\n3. Issue monotonic fencing tokens (`lock_generation_id`) with every acquired lock to prevent split-brain zombies.\n4. Use heartbeat keep-alives with 5-second automatic lease timeouts."
+  }
+];
+
 interface ExtensionSimulatorProps {
   contexts: ContextItem[];
   onSaveContext: (item: Partial<ContextItem> & { id?: string }) => Promise<void>;
@@ -94,7 +184,7 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
   const [isOverlayOpen, setIsOverlayOpen] = useState(true);
 
   // Simulated browser active page
-  const [simulatedPage, setSimulatedPage] = useState<'gemini' | 'claude' | 'chatgpt'>('chatgpt');
+  const [simulatedPage, setSimulatedPage] = useState<'chatgpt' | 'gemini' | 'claude' | 'perplexity' | 'copilot' | 'grok' | 'unsupported'>('chatgpt');
 
   // Simulated ChatGPT conversation scenario ('short' = 4 msgs, 'long' = 8 msgs)
   const [chatGptScenario, setChatGptScenario] = useState<'short' | 'long'>('short');
@@ -119,36 +209,14 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
   const [copied, setCopied] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Auto-detect and extract conversation when on ChatGPT
+  // Auto-detect and extract conversation when on supported platform
   useEffect(() => {
-    if (simulatedPage === 'chatgpt') {
-      const messages = chatGptScenario === 'short' ? CHATGPT_SHORT_CONVERSATION : CHATGPT_LONG_CONVERSATION;
-      setCapturedConversation({
-        platform: 'chatgpt',
-        detected: true,
-        pageTitle: 'FastAPI Redis Stream Worker',
-        url: 'https://chatgpt.com/c/678a1bc2',
-        capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        messages: messages,
-        messageCount: messages.length,
-        turnCount: Math.ceil(messages.length / 2),
-        isPartial: true,
-        sourceNotice: 'ContextBridge captured the conversation currently loaded on this page.'
-      });
-    } else {
-      setCapturedConversation(null);
-    }
-  }, [simulatedPage, chatGptScenario]);
-
-  // Refresh conversation handler (honest re-read of the active page DOM)
-  const handleRefreshConversation = () => {
-    setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-      if (simulatedPage === 'chatgpt') {
+    switch (simulatedPage) {
+      case 'chatgpt': {
         const messages = chatGptScenario === 'short' ? CHATGPT_SHORT_CONVERSATION : CHATGPT_LONG_CONVERSATION;
         setCapturedConversation({
           platform: 'chatgpt',
+          platformName: 'ChatGPT',
           detected: true,
           pageTitle: 'FastAPI Redis Stream Worker',
           url: 'https://chatgpt.com/c/678a1bc2',
@@ -157,11 +225,212 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
           messageCount: messages.length,
           turnCount: Math.ceil(messages.length / 2),
           isPartial: true,
-          sourceNotice: 'ContextBridge captured the conversation currently loaded on this page.'
+          sourceNotice: 'ContextBridge captured the conversation currently loaded on ChatGPT.'
         });
-        onShowToast(`Refreshed: ${messages.length} messages read from active ChatGPT page`);
-      } else {
-        onShowToast('Active page is not a ChatGPT conversation');
+        break;
+      }
+      case 'gemini': {
+        setCapturedConversation({
+          platform: 'gemini',
+          platformName: 'Google Gemini',
+          detected: true,
+          pageTitle: 'Go Cloud PubSub & BigQuery Pipeline',
+          url: 'https://gemini.google.com/app/c/49204128',
+          capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          messages: GEMINI_CONVERSATION,
+          messageCount: GEMINI_CONVERSATION.length,
+          turnCount: Math.ceil(GEMINI_CONVERSATION.length / 2),
+          isPartial: true,
+          sourceNotice: 'ContextBridge captured the conversation currently loaded on Google Gemini.'
+        });
+        break;
+      }
+      case 'claude': {
+        setCapturedConversation({
+          platform: 'claude',
+          platformName: 'Claude',
+          detected: true,
+          pageTitle: 'TanStack Query v5 Optimistic Updates',
+          url: 'https://claude.ai/chat/a9b8c7d6',
+          capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          messages: CLAUDE_CONVERSATION,
+          messageCount: CLAUDE_CONVERSATION.length,
+          turnCount: Math.ceil(CLAUDE_CONVERSATION.length / 2),
+          isPartial: true,
+          sourceNotice: 'ContextBridge captured the conversation currently loaded on Claude.'
+        });
+        break;
+      }
+      case 'perplexity': {
+        setCapturedConversation({
+          platform: 'perplexity',
+          platformName: 'Perplexity',
+          detected: true,
+          pageTitle: 'Apache Arrow vs Protobuf Zero-Copy IPC',
+          url: 'https://perplexity.ai/search/789abc',
+          capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          messages: PERPLEXITY_CONVERSATION,
+          messageCount: PERPLEXITY_CONVERSATION.length,
+          turnCount: Math.ceil(PERPLEXITY_CONVERSATION.length / 2),
+          isPartial: true,
+          sourceNotice: 'ContextBridge captured the conversation currently loaded on Perplexity.'
+        });
+        break;
+      }
+      case 'copilot': {
+        setCapturedConversation({
+          platform: 'copilot',
+          platformName: 'Microsoft Copilot',
+          detected: true,
+          pageTitle: 'Multi-Arch Docker Buildx Pipeline',
+          url: 'https://copilot.microsoft.com/chats/c0p1l0t',
+          capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          messages: COPILOT_CONVERSATION,
+          messageCount: COPILOT_CONVERSATION.length,
+          turnCount: Math.ceil(COPILOT_CONVERSATION.length / 2),
+          isPartial: true,
+          sourceNotice: 'ContextBridge captured the conversation currently loaded on Microsoft Copilot.'
+        });
+        break;
+      }
+      case 'grok': {
+        setCapturedConversation({
+          platform: 'grok',
+          platformName: 'Grok',
+          detected: true,
+          pageTitle: 'Raft Distributed Lock Manager',
+          url: 'https://grok.com/chat/gr0k987',
+          capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          messages: GROK_CONVERSATION,
+          messageCount: GROK_CONVERSATION.length,
+          turnCount: Math.ceil(GROK_CONVERSATION.length / 2),
+          isPartial: true,
+          sourceNotice: 'ContextBridge captured the conversation currently loaded on Grok.'
+        });
+        break;
+      }
+      case 'unsupported':
+      default: {
+        setCapturedConversation(null);
+        break;
+      }
+    }
+  }, [simulatedPage, chatGptScenario]);
+
+  // Refresh conversation handler (honest re-read of the active page DOM)
+  const handleRefreshConversation = () => {
+    setIsRefreshing(true);
+    setTimeout(() => {
+      setIsRefreshing(false);
+      switch (simulatedPage) {
+        case 'chatgpt': {
+          const messages = chatGptScenario === 'short' ? CHATGPT_SHORT_CONVERSATION : CHATGPT_LONG_CONVERSATION;
+          setCapturedConversation({
+            platform: 'chatgpt',
+            platformName: 'ChatGPT',
+            detected: true,
+            pageTitle: 'FastAPI Redis Stream Worker',
+            url: 'https://chatgpt.com/c/678a1bc2',
+            capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            messages: messages,
+            messageCount: messages.length,
+            turnCount: Math.ceil(messages.length / 2),
+            isPartial: true,
+            sourceNotice: 'ContextBridge captured the conversation currently loaded on ChatGPT.'
+          });
+          onShowToast(`Refreshed: ${messages.length} messages read from active ChatGPT page`);
+          break;
+        }
+        case 'gemini': {
+          setCapturedConversation({
+            platform: 'gemini',
+            platformName: 'Google Gemini',
+            detected: true,
+            pageTitle: 'Go Cloud PubSub & BigQuery Pipeline',
+            url: 'https://gemini.google.com/app/c/49204128',
+            capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            messages: GEMINI_CONVERSATION,
+            messageCount: GEMINI_CONVERSATION.length,
+            turnCount: Math.ceil(GEMINI_CONVERSATION.length / 2),
+            isPartial: true,
+            sourceNotice: 'ContextBridge captured the conversation currently loaded on Google Gemini.'
+          });
+          onShowToast(`Refreshed: ${GEMINI_CONVERSATION.length} messages read from Google Gemini`);
+          break;
+        }
+        case 'claude': {
+          setCapturedConversation({
+            platform: 'claude',
+            platformName: 'Claude',
+            detected: true,
+            pageTitle: 'TanStack Query v5 Optimistic Updates',
+            url: 'https://claude.ai/chat/a9b8c7d6',
+            capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            messages: CLAUDE_CONVERSATION,
+            messageCount: CLAUDE_CONVERSATION.length,
+            turnCount: Math.ceil(CLAUDE_CONVERSATION.length / 2),
+            isPartial: true,
+            sourceNotice: 'ContextBridge captured the conversation currently loaded on Claude.'
+          });
+          onShowToast(`Refreshed: ${CLAUDE_CONVERSATION.length} messages read from Claude`);
+          break;
+        }
+        case 'perplexity': {
+          setCapturedConversation({
+            platform: 'perplexity',
+            platformName: 'Perplexity',
+            detected: true,
+            pageTitle: 'Apache Arrow vs Protobuf Zero-Copy IPC',
+            url: 'https://perplexity.ai/search/789abc',
+            capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            messages: PERPLEXITY_CONVERSATION,
+            messageCount: PERPLEXITY_CONVERSATION.length,
+            turnCount: Math.ceil(PERPLEXITY_CONVERSATION.length / 2),
+            isPartial: true,
+            sourceNotice: 'ContextBridge captured the conversation currently loaded on Perplexity.'
+          });
+          onShowToast(`Refreshed: ${PERPLEXITY_CONVERSATION.length} messages read from Perplexity`);
+          break;
+        }
+        case 'copilot': {
+          setCapturedConversation({
+            platform: 'copilot',
+            platformName: 'Microsoft Copilot',
+            detected: true,
+            pageTitle: 'Multi-Arch Docker Buildx Pipeline',
+            url: 'https://copilot.microsoft.com/chats/c0p1l0t',
+            capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            messages: COPILOT_CONVERSATION,
+            messageCount: COPILOT_CONVERSATION.length,
+            turnCount: Math.ceil(COPILOT_CONVERSATION.length / 2),
+            isPartial: true,
+            sourceNotice: 'ContextBridge captured the conversation currently loaded on Microsoft Copilot.'
+          });
+          onShowToast(`Refreshed: ${COPILOT_CONVERSATION.length} messages read from Microsoft Copilot`);
+          break;
+        }
+        case 'grok': {
+          setCapturedConversation({
+            platform: 'grok',
+            platformName: 'Grok',
+            detected: true,
+            pageTitle: 'Raft Distributed Lock Manager',
+            url: 'https://grok.com/chat/gr0k987',
+            capturedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            messages: GROK_CONVERSATION,
+            messageCount: GROK_CONVERSATION.length,
+            turnCount: Math.ceil(GROK_CONVERSATION.length / 2),
+            isPartial: true,
+            sourceNotice: 'ContextBridge captured the conversation currently loaded on Grok.'
+          });
+          onShowToast(`Refreshed: ${GROK_CONVERSATION.length} messages read from Grok`);
+          break;
+        }
+        default: {
+          setCapturedConversation(null);
+          onShowToast('This AI platform is not currently supported. Manual context mode enabled.');
+          break;
+        }
       }
     }, 250);
   };
@@ -330,32 +599,32 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
             </div>
 
             {/* Browser Tabs Switcher */}
-            <div className="flex items-center gap-1 text-[11px]">
+            <div className="flex items-center gap-1 text-[11px] overflow-x-auto max-w-[620px] py-0.5">
               <button
                 onClick={() => setSimulatedPage('gemini')}
-                className={`px-3 py-1 rounded-md font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                   simulatedPage === 'gemini'
                     ? theme === 'light' ? 'bg-white text-slate-900 shadow-xs' : 'bg-slate-800 text-slate-200'
                     : 'opacity-70 hover:opacity-100'
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-blue-500" />
-                <span>Google Gemini</span>
+                <span>Gemini</span>
               </button>
               <button
                 onClick={() => setSimulatedPage('claude')}
-                className={`px-3 py-1 rounded-md font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                   simulatedPage === 'claude'
                     ? theme === 'light' ? 'bg-white text-slate-900 shadow-xs' : 'bg-slate-800 text-slate-200'
                     : 'opacity-70 hover:opacity-100'
                 }`}
               >
                 <span className="w-2 h-2 rounded-full bg-amber-500" />
-                <span>Claude 3.7</span>
+                <span>Claude</span>
               </button>
               <button
                 onClick={() => setSimulatedPage('chatgpt')}
-                className={`px-3 py-1 rounded-md font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                   simulatedPage === 'chatgpt'
                     ? theme === 'light' ? 'bg-white text-slate-900 shadow-xs' : 'bg-slate-800 text-slate-200'
                     : 'opacity-70 hover:opacity-100'
@@ -364,21 +633,70 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                 <span className="w-2 h-2 rounded-full bg-emerald-500" />
                 <span>ChatGPT</span>
               </button>
+              <button
+                onClick={() => setSimulatedPage('perplexity')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  simulatedPage === 'perplexity'
+                    ? theme === 'light' ? 'bg-white text-slate-900 shadow-xs' : 'bg-slate-800 text-slate-200'
+                    : 'opacity-70 hover:opacity-100'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-cyan-500" />
+                <span>Perplexity</span>
+              </button>
+              <button
+                onClick={() => setSimulatedPage('copilot')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  simulatedPage === 'copilot'
+                    ? theme === 'light' ? 'bg-white text-slate-900 shadow-xs' : 'bg-slate-800 text-slate-200'
+                    : 'opacity-70 hover:opacity-100'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-sky-500" />
+                <span>Copilot</span>
+              </button>
+              <button
+                onClick={() => setSimulatedPage('grok')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  simulatedPage === 'grok'
+                    ? theme === 'light' ? 'bg-white text-slate-900 shadow-xs' : 'bg-slate-800 text-slate-200'
+                    : 'opacity-70 hover:opacity-100'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-purple-500" />
+                <span>Grok</span>
+              </button>
+              <button
+                onClick={() => setSimulatedPage('unsupported')}
+                className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                  simulatedPage === 'unsupported'
+                    ? theme === 'light' ? 'bg-white text-slate-900 shadow-xs' : 'bg-slate-800 text-slate-200'
+                    : 'opacity-60 hover:opacity-90'
+                }`}
+                title="Test behavior on non-AI pages (fallback to manual context mode)"
+              >
+                <span className="w-2 h-2 rounded-full bg-slate-400" />
+                <span>GitHub (Unsupported)</span>
+              </button>
             </div>
           </div>
 
           {/* Omnibox URL */}
-          <div className={`flex-1 max-w-sm rounded-full px-3 py-1 flex items-center gap-2 text-[11px] font-mono border ${
+          <div className={`flex-1 max-w-xs rounded-full px-3 py-1 flex items-center gap-2 text-[11px] font-mono border ${
             theme === 'light'
               ? 'bg-white/90 border-slate-200 text-slate-600'
               : 'bg-slate-950 border-slate-800 text-slate-300'
           }`}>
-            <span className="text-emerald-500">🔒</span>
+            <span className="text-emerald-500 text-xs">🔒</span>
             <span className="opacity-50">https://</span>
             <span className="truncate">
               {simulatedPage === 'gemini' && 'gemini.google.com/app'}
-              {simulatedPage === 'claude' && 'claude.ai/chat'}
-              {simulatedPage === 'chatgpt' && 'chatgpt.com'}
+              {simulatedPage === 'claude' && 'claude.ai/chat/a9b8c7d6'}
+              {simulatedPage === 'chatgpt' && 'chatgpt.com/c/678a1bc2'}
+              {simulatedPage === 'perplexity' && 'perplexity.ai/search/789abc'}
+              {simulatedPage === 'copilot' && 'copilot.microsoft.com/chats'}
+              {simulatedPage === 'grok' && 'grok.com/chat/gr0k987'}
+              {simulatedPage === 'unsupported' && 'github.com/facebook/react/issues/12345'}
             </span>
           </div>
 
@@ -426,10 +744,29 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                     <Sparkles className="w-5 h-5 text-amber-500" />
                     <span>Claude</span>
                   </div>
-                ) : (
+                ) : simulatedPage === 'gemini' ? (
                   <span className="font-display font-bold text-lg tracking-tight bg-gradient-to-r from-blue-600 via-indigo-600 to-rose-500 bg-clip-text text-transparent">
                     Gemini
                   </span>
+                ) : simulatedPage === 'perplexity' ? (
+                  <div className="flex items-center gap-2 font-display font-bold text-lg tracking-tight text-cyan-500">
+                    <Search className="w-5 h-5 text-cyan-500" />
+                    <span>Perplexity</span>
+                  </div>
+                ) : simulatedPage === 'copilot' ? (
+                  <div className="flex items-center gap-2 font-display font-bold text-lg tracking-tight text-sky-500">
+                    <Bot className="w-5 h-5 text-sky-500" />
+                    <span>Copilot</span>
+                  </div>
+                ) : simulatedPage === 'grok' ? (
+                  <div className="flex items-center gap-2 font-display font-bold text-lg tracking-tight text-purple-400">
+                    <Sparkles className="w-5 h-5 text-purple-400" />
+                    <span>Grok</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 font-display font-bold text-lg tracking-tight text-slate-400">
+                    <span>GitHub</span>
+                  </div>
                 )}
               </div>
 
@@ -439,31 +776,23 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                   theme === 'light' ? 'bg-slate-200/80 text-slate-900' : 'bg-slate-800 text-slate-100'
                 }`}>
                   <span className="text-sm">✦</span>
-                  <span>New chat</span>
+                  <span>{simulatedPage === 'unsupported' ? 'Pull Requests' : 'New chat'}</span>
                 </div>
 
-                {simulatedPage === 'chatgpt' && (
-                  <div className="pt-2 space-y-1">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">Recent Chats</div>
-                    <div className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 truncate">
-                      FastAPI Redis Stream Worker
-                    </div>
-                    <div className="px-3 py-1.5 rounded-lg text-xs opacity-60 truncate">
-                      Next.js Authentication
-                    </div>
-                    <div className="px-3 py-1.5 rounded-lg text-xs opacity-60 truncate">
-                      Postgres Migration Script
-                    </div>
+                <div className="pt-2 space-y-1">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2">Active Session</div>
+                  <div className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-500/10 text-indigo-600 dark:text-sky-400 border border-indigo-500/20 truncate">
+                    {capturedConversation?.pageTitle || (simulatedPage === 'unsupported' ? 'Issue #12345: Zero-copy serialization' : 'Active Conversation')}
                   </div>
-                )}
+                </div>
               </div>
             </div>
 
             <div className="text-xs px-3 py-2 flex items-center justify-between opacity-75">
-              <span>Help &amp; feedback</span>
-              {simulatedPage === 'chatgpt' && (
-                <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-500 font-bold">GPT-4o</span>
-              )}
+              <span>Status: Connected</span>
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 font-bold">
+                {simulatedPage.toUpperCase()}
+              </span>
             </div>
           </aside>
 
@@ -505,13 +834,44 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                   </div>
                 ))}
               </div>
+            ) : capturedConversation && capturedConversation.messages ? (
+              <div className="max-w-2xl mx-auto space-y-4">
+                <div className="p-2.5 rounded-xl border border-sky-500/30 bg-sky-500/10 flex items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 text-sky-700 dark:text-sky-300 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
+                    <span>Loaded in Page DOM: {capturedConversation.messageCount} messages ({capturedConversation.platformName})</span>
+                  </div>
+                </div>
+
+                {capturedConversation.messages.map((msg, idx) => (
+                  <div
+                    key={msg.id}
+                    className={`p-3.5 rounded-2xl text-xs space-y-1.5 border transition-all ${
+                      msg.role === 'user'
+                        ? theme === 'light' ? 'bg-white border-slate-200/90 shadow-xs' : 'bg-slate-900 border-slate-800'
+                        : theme === 'light' ? 'bg-indigo-50/60 border-indigo-100 shadow-xs' : 'bg-sky-950/20 border-sky-900/30'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[11px] font-bold">
+                      <span className={msg.role === 'user' ? 'text-indigo-600' : 'text-sky-600'}>
+                        {msg.role === 'user' ? 'User' : capturedConversation.platformName}
+                      </span>
+                      <span className="font-mono text-[10px] text-slate-400">Turn {Math.floor(idx / 2) + 1}</span>
+                    </div>
+                    <div className="whitespace-pre-wrap leading-relaxed opacity-90">{msg.content}</div>
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className="max-w-md mx-auto py-16 flex flex-col justify-center items-center text-center space-y-4">
-                <span className="text-4xl font-display font-bold tracking-tight bg-gradient-to-r from-blue-600 via-indigo-500 to-rose-500 bg-clip-text text-transparent block">
-                  {simulatedPage === 'claude' ? 'Claude 3.7' : 'Gemini'}
+                <div className="w-12 h-12 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-400 text-xl font-bold">
+                  GH
+                </div>
+                <span className="text-xl font-display font-bold tracking-tight text-slate-700 dark:text-slate-200 block">
+                  GitHub — Non-AI Webpage
                 </span>
-                <p className="text-sm opacity-60">
-                  Active workspace session on {simulatedPage === 'claude' ? 'claude.ai' : 'gemini.google.com'}. Phase 1 auto-read is dedicated to ChatGPT; manual context mode remains active here.
+                <p className="text-xs opacity-70 leading-relaxed">
+                  You are viewing <code>github.com/facebook/react/issues/12345</code>. Since this domain is not a supported AI chat platform, ContextBridge will automatically show <strong>Manual Context Mode</strong> with customizable context cards.
                 </p>
               </div>
             )}
@@ -647,7 +1007,7 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
                             </span>
                             <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                              ChatGPT conversation detected
+                              {capturedConversation.platformName || 'AI'} conversation detected
                             </span>
                             <span className="font-mono text-[11px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-500/20">
                               {capturedConversation.messageCount} msgs ({capturedConversation.turnCount} turns)
@@ -672,14 +1032,14 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                           </div>
                         </div>
 
-                        {/* Honest Long Conversation Disclaimer */}
+                        {/* Honest Conversation Notice */}
                         <div className={`px-3 py-2 rounded-xl text-[11px] flex items-center gap-2 border leading-tight ${
                           theme === 'light'
                             ? 'bg-indigo-50/70 border-indigo-100 text-indigo-700'
                             : 'bg-sky-950/30 border-sky-900/40 text-sky-300'
                         }`}>
                           <Info className="w-3.5 h-3.5 shrink-0 opacity-80" />
-                          <span>ContextBridge captured the conversation currently loaded on this page.</span>
+                          <span>{capturedConversation.sourceNotice || `ContextBridge captured the conversation currently loaded on ${capturedConversation.platformName}.`}</span>
                         </div>
 
                         {/* Captured Conversation Stream Card */}
@@ -717,7 +1077,7 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                                         ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20'
                                         : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
                                     }`}>
-                                      {isUser ? 'USER' : 'CHATGPT'}
+                                      {isUser ? 'USER' : (capturedConversation.platformName?.toUpperCase() || 'AI')}
                                     </span>
                                   </div>
                                   <p className="line-clamp-2 text-slate-600 dark:text-slate-300 leading-relaxed">
@@ -774,27 +1134,43 @@ export const ExtensionSimulator: React.FC<ExtensionSimulatorProps> = ({
                       /* MANUAL FALLBACK (Unsupported Website or Empty Chat) */
                       <>
                         {/* Status Banner: Manual Mode */}
-                        <div className={`p-3 rounded-2xl border flex items-center justify-between gap-2.5 transition-all ${
+                        <div className={`p-3 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-all ${
                           theme === 'light'
                             ? 'bg-white/70 border-white/85 shadow-xs'
                             : 'bg-[#141b29]/80 border-white/10'
                         }`}>
-                          <div className="flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
                             <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                              Manual Context Mode
+                              Unsupported AI Platform
                             </span>
-                            <span className="text-[11px] text-slate-400">
-                              (Unsupported platform for auto-read • ChatGPT supported)
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                              This AI platform is not currently supported. Manual context mode enabled.
                             </span>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setSimulatedPage('chatgpt')}
-                            className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 cursor-pointer"
-                          >
-                            Switch to ChatGPT
-                          </button>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => setSimulatedPage('gemini')}
+                              className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 cursor-pointer"
+                            >
+                              Gemini
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSimulatedPage('claude')}
+                              className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 cursor-pointer"
+                            >
+                              Claude
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSimulatedPage('chatgpt')}
+                              className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 cursor-pointer"
+                            >
+                              ChatGPT
+                            </button>
+                          </div>
                         </div>
 
                         {/* Card 1: What are you working on? */}

@@ -69,10 +69,33 @@ The ContextBridge Stitch Lens floats above your workspace
 
 ---
 
+## 🌐 Multi-Platform Automatic Conversation Reading
+
+ContextBridge automatically reads the active conversation from major AI platforms using specialized, zero-cloud DOM extractors:
+
+- **ChatGPT** (`chatgpt.com`, `chat.openai.com`): Preserves role-based extraction (`data-message-author-role`) and conversation-turn article containers.
+- **Google Gemini** (`gemini.google.com`, `bard.google.com`): Extracts Angular custom elements `<user-query>` and `<model-response>`.
+- **Claude** (`claude.ai`): Extracts user and assistant message test-id blocks and code fences.
+- **Perplexity** (`perplexity.ai`): Extracts questions and markdown answers while stripping citation chips.
+- **Microsoft Copilot** (`copilot.microsoft.com`, `bing.com`): Extracts conversation turns and bot responses.
+- **Grok** (`grok.com`, `x.com/i/grok`): Extracts user questions and markdown response containers.
+- **Unsupported Sites** (e.g. `github.com`): Gracefully falls back to Manual Context Mode with customizable context cards.
+
+---
+
 ## 📁 Architecture Overview
 
 - **`manifest.json`**: Manifest V3 declaration with `activeTab`, `scripting`, and `storage` permissions, registering `background.js` as the service worker and `content.js` as the content script.
 - **`background.js`**: Background service worker responding to toolbar clicks and hotkeys, dispatching toggle signals to the active tab.
-- **`content.js`**: Injects an isolated **Shadow DOM** (`#contextbridge-overlay-root`) into the current page so host page CSS cannot leak in or break the overlay.
+- **`content.js`**: Injects an isolated **Shadow DOM** (`#contextbridge-overlay-root`) into the current page and initializes the extractor registry.
+- **`extractors/`**: Modular platform-specific extractors:
+  - `registry.js`: Central detector routing to platform extractors.
+  - `chatgpt.js`: Preserved multi-selector ChatGPT extractor.
+  - `gemini.js`: Google Gemini extractor.
+  - `claude.js`: Claude extractor.
+  - `perplexity.js`: Perplexity extractor.
+  - `copilot.js`: Microsoft Copilot extractor.
+  - `grok.js`: Grok extractor.
+  - `common.js`: DOM order sorting and markdown text extraction.
 - **`overlay.css`**: Complete Stitch UI styles, animations, variables, and typography.
 - **`icons/`**: Extension toolbar and web store icons.

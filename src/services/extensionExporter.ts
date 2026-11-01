@@ -64,6 +64,62 @@ export const EXTENSION_FILES: ExtensionFileSummary[] = [
     size: '803 B',
     description: '128x128 icon for Chrome Web Store & high-DPI displays.',
     category: 'asset'
+  },
+  {
+    name: 'extractors/registry.js',
+    path: 'extension/extractors/registry.js',
+    size: '2.1 KB',
+    description: 'Central registry detecting host platform and delegating to modular extractors.',
+    category: 'logic'
+  },
+  {
+    name: 'extractors/chatgpt.js',
+    path: 'extension/extractors/chatgpt.js',
+    size: '3.6 KB',
+    description: 'Dedicated extractor preserving verified multi-selector turn and role extraction for ChatGPT.',
+    category: 'logic'
+  },
+  {
+    name: 'extractors/gemini.js',
+    path: 'extension/extractors/gemini.js',
+    size: '2.4 KB',
+    description: 'Extractor for Google Gemini querying user-query and model-response elements.',
+    category: 'logic'
+  },
+  {
+    name: 'extractors/claude.js',
+    path: 'extension/extractors/claude.js',
+    size: '2.3 KB',
+    description: 'Extractor for Claude querying test-ids and message typography wrappers.',
+    category: 'logic'
+  },
+  {
+    name: 'extractors/perplexity.js',
+    path: 'extension/extractors/perplexity.js',
+    size: '2.2 KB',
+    description: 'Extractor for Perplexity querying user queries and markdown prose blocks.',
+    category: 'logic'
+  },
+  {
+    name: 'extractors/copilot.js',
+    path: 'extension/extractors/copilot.js',
+    size: '2.2 KB',
+    description: 'Extractor for Microsoft Copilot parsing CIB message turns and author roles.',
+    category: 'logic'
+  },
+  {
+    name: 'extractors/grok.js',
+    path: 'extension/extractors/grok.js',
+    size: '2.1 KB',
+    description: 'Extractor for Grok parsing message bubbles and markdown response blocks.',
+    category: 'logic'
+  },
+  {
+    name: 'extractors/common.js',
+    path: 'extension/extractors/common.js',
+    size: '1.8 KB',
+    description: 'Shared utilities for text normalization, code blocks, and DOM order sorting.',
+    category: 'logic'
   }
 ];
 
@@ -76,7 +132,15 @@ export async function downloadExtensionZip(): Promise<void> {
     { name: 'background.js', path: '/extension/background.js' },
     { name: 'content.js', path: '/extension/content.js' },
     { name: 'overlay.css', path: '/extension/overlay.css' },
-    { name: 'README.md', path: '/extension/README.md' }
+    { name: 'README.md', path: '/extension/README.md' },
+    { name: 'extractors/registry.js', path: '/extension/extractors/registry.js' },
+    { name: 'extractors/common.js', path: '/extension/extractors/common.js' },
+    { name: 'extractors/chatgpt.js', path: '/extension/extractors/chatgpt.js' },
+    { name: 'extractors/gemini.js', path: '/extension/extractors/gemini.js' },
+    { name: 'extractors/claude.js', path: '/extension/extractors/claude.js' },
+    { name: 'extractors/perplexity.js', path: '/extension/extractors/perplexity.js' },
+    { name: 'extractors/copilot.js', path: '/extension/extractors/copilot.js' },
+    { name: 'extractors/grok.js', path: '/extension/extractors/grok.js' }
   ];
 
   for (const f of filesToFetch) {
